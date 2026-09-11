@@ -52,11 +52,13 @@ class GatewayTurnMixin:
     ) -> tuple[str, dict]:
         """Resolve model/runtime for a session.
 
-        Priority (highest first): session ``/model`` → ``channel_overrides`` → global config/env
+        Priority (highest first): session ``/model`` → ``channel_overrides`` → platform default
+        (``platforms.<name>.model``/``.provider``) → global config/env
         (``_resolve_gateway_model(user_config)`` and default provider resolution)."""
         from gateway.run import (
-            _credential_pool_for_provider, _get_channel_override, _resolve_gateway_model,
-            _resolve_runtime_agent_kwargs, _resolve_runtime_agent_kwargs_for_provider,
+            _credential_pool_for_provider, _get_channel_override, _get_platform_model_override,
+            _resolve_gateway_model, _resolve_runtime_agent_kwargs,
+            _resolve_runtime_agent_kwargs_for_provider,
         )
         skey = self._resolve_session_key_or_none(source, session_key)
 
@@ -109,7 +111,7 @@ class GatewayTurnMixin:
                 cfg, source.platform, str(source.chat_id) if source.chat_id else "",
                 thread_id=str(source.thread_id) if getattr(source, "thread_id", None) else None,
                 parent_id=str(source.parent_chat_id) if getattr(source, "parent_chat_id", None) else None,
-            )
+            ) or _get_platform_model_override(cfg, source.platform)
             if ch:
                 if ch.model:
                     model = ch.model

@@ -2882,6 +2882,26 @@ def _get_channel_override(
     return None
 
 
+def _get_platform_model_override(config: GatewayConfig, platform: Platform) -> Optional[ChannelOverride]:
+    """Platform-level model/provider default: ``platforms.<name>.model`` + ``platforms.<name>.provider``.
+
+    Applies to every channel of the platform that has no ``channel_overrides`` entry of its own,
+    and is overridden by one when it exists. Needed for platforms whose chat ids are generated per
+    event — the webhook adapter keys each delivery as ``webhook:<route>:<delivery_id>``, so no
+    fixed ``channel_overrides`` key can ever match and the platform default would otherwise be the
+    only expressible choice. Returns None when the platform config sets neither key.
+    """
+    platforms = getattr(config, "platforms", None)
+    platform_config = platforms.get(platform) if platforms else None
+    if platform_config is None:
+        return None
+    model = getattr(platform_config, "model", None)
+    provider = getattr(platform_config, "provider", None)
+    if not model and not provider:
+        return None
+    return ChannelOverride(model=model, provider=provider)
+
+
 def _resolve_hermes_bin() -> Optional[list[str]]:
     """Hermes update command argv: ``hermes`` on PATH, else ``python -m hermes_cli.main``, else None."""
     import shutil

@@ -388,6 +388,12 @@ class PlatformConfig:
     enabled: bool = False
     token: Optional[str] = None
     api_key: Optional[str] = None  # API key if different from token
+    # Platform-level default applied to every channel of this platform that has no
+    # ``channel_overrides`` entry of its own. The only knob available to platforms whose chat
+    # ids are generated per event (the webhook adapter keys sessions as
+    # ``webhook:<route>:<delivery_id>``), where no fixed override key can ever match.
+    model: Optional[str] = None
+    provider: Optional[str] = None
     home_channel: Optional[HomeChannel] = None
     reply_to_mode: str = "first"  # "off" never threads, "first" only the first chunk, "all" every chunk
     gateway_restart_notification: bool = True  # "♻️ Gateway online/restarted" pings; noise on end-user platforms
@@ -404,6 +410,7 @@ class PlatformConfig:
             "typing_indicator": self.typing_indicator,
             **({"typing_status_text": self.typing_status_text} if self.typing_status_text is not None else {}),
             **{k: v for k in ("token", "api_key") if (v := getattr(self, k))},
+            **{k: v for k in ("model", "provider") if (v := getattr(self, k))},
         }
         if self.home_channel:
             result["home_channel"] = self.home_channel.to_dict()
@@ -433,6 +440,8 @@ class PlatformConfig:
             enabled=_coerce_bool(data.get("enabled"), False),
             token=data.get("token"),
             api_key=data.get("api_key"),
+            model=toplevel_or_extra("model"),
+            provider=toplevel_or_extra("provider"),
             home_channel=HomeChannel.from_dict(home) if isinstance(home, dict) else None,
             reply_to_mode=data.get("reply_to_mode", "first"),
             gateway_restart_notification=_coerce_bool(toplevel_or_extra("gateway_restart_notification"), True),
