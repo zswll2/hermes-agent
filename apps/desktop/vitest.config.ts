@@ -3,6 +3,15 @@ import { defineConfig } from 'vitest/config'
 
 const reactUi: TestProjectConfiguration = {
   extends: './vite.config.ts',
+  // Explicit defines for the ui project: the extended vite.config.ts derives
+  // __HERMES_BUILD_STAMP__ from the UNTRACKED public/build-stamp.json ('' on a
+  // fresh checkout) and __HERMES_WEB__ from build mode — both wrong for tests
+  // exercising the web-update contract (src/lib/web-update.test.ts). vi.stubGlobal
+  // cannot reach transform-time defines; they must be set here.
+  define: {
+    __HERMES_WEB__: 'true',
+    __HERMES_BUILD_STAMP__: '"vitest-embedded-stamp"'
+  },
   test: {
     name: 'ui',
     environment: 'jsdom',
