@@ -4,7 +4,7 @@
 // state — so the threshold contract is unit-testable in isolation. The hook
 // (app/chat/hooks/use-edge-swipe-drawer.ts) owns only the event plumbing.
 
-/** A gesture starting further from the left edge than this is not an
+/** A gesture starting further from the gesture edge than this is not an
  *  edge-swipe (iOS reserves roughly this band for the system gesture). */
 export const EDGE_SWIPE_START_MAX_X_PX = 24
 
@@ -23,6 +23,10 @@ export interface EdgeSwipeInput {
   startX: number
   /** Whether the drawer the gesture controls is currently open. */
   open: boolean
+  /** Which screen edge's drawer the gesture addresses (default: left). */
+  side?: 'left' | 'right'
+  /** Viewport width — required to resolve the RIGHT edge's start band. */
+  width?: number
 }
 
 export type EdgeSwipeResult = 'close' | 'open' | null
@@ -30,26 +34,38 @@ export type EdgeSwipeResult = 'close' | 'open' | null
 /**
  * Classify one completed touch gesture against the drawer thresholds.
  *
- * - Drawer closed: only a rightward swipe STARTING within the edge band opens
- *   it, so mid-screen horizontal drags (slider UIs, text selection) never
- *   summon the drawer.
- * - Drawer open: a leftward swipe from anywhere closes it — the drawer itself
- *   covers the screen edge, so every close gesture necessarily starts on it.
+ * - Drawer closed: a swipe TOWARD the screen center starting within that
+ *   side's edge band opens it (left edge → rightward, right edge → leftward),
+ *   so mid-screen horizontal drags (slider UIs, text selection) never summon
+ *   a drawer.
+ * - Drawer open: a swipe OUTWARD (toward its own edge) from anywhere closes
+ *   it — the drawer covers that edge, so every close gesture necessarily
+ *   starts on it.
  * - Anything else — too short, too diagonal, or a repeat of the current state
  *   — is `null` and must not touch drawer state.
  */
-export function classifyEdgeSwipe({ dx, dy, startX, open }: EdgeSwipeInput): EdgeSwipeResult {
+export function classifyEdgeSwipe({ dx, dy, startX, open, side = 'left', width }: EdgeSwipeInput): EdgeSwipeResult {
   if (Math.abs(dy) > EDGE_SWIPE_MAX_ABS_DY_PX) {
     return null
   }
 
   if (open) {
-    return dx <= -EDGE_SWIPE_MIN_DX_PX ? 'close' : null
+    const outward = side === 'left' ? dx <= -EDGE_SWIPE_MIN_DX_PX : dx >= EDGE_SWIPE_MIN_DX_PX
+
+    return outward ? 'close' : null
   }
 
-  if (startX > EDGE_SWIPE_START_MAX_X_PX) {
+  if (side === 'left') {
+    if (startX > EDGE_SWIPE_START_MAX_X_PX) {
+      return null
+    }
+
+    return dx >= EDGE_SWIPE_MIN_DX_PX ? 'open' : null
+  }
+
+  if (width === undefined || startX < width - EDGE_SWIPE_START_MAX_X_PX) {
     return null
   }
 
-  return dx >= EDGE_SWIPE_MIN_DX_PX ? 'open' : null
+  return dx <= -EDGE_SWIPE_MIN_DX_PX ? 'open' : null
 }
