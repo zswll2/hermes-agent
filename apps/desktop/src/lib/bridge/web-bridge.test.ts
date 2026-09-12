@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createWebBridge, WebApiAuthError, WebApiError, WebBridgeCapabilityError } from './web-bridge'
+import { isWebVirtualPath, registerWebFile, resetWebFileRegistry, WEB_FS_ROOT } from './web-file-registry'
 
 import { getBridge } from './index'
 
@@ -100,11 +101,104 @@ describe('web-bridge api()', () => {
     expect((error as WebApiError).status).toBe(500)
   })
 
-  it('multipart upload requests reject with a capability error (out of P0 scope)', async () => {
+  it('multipart uploads POST FormData with the browser-set boundary (no content-type header)', async () => {
+    const fn = mockFetch(200, { saved: true })
     const bridge = createWebBridge()
-    await expect(
-      bridge.api({ path: '/api/upload', upload: { filename: 'a.png', bytes: new ArrayBuffer(1) } })
-    ).rejects.toBeInstanceOf(WebBridgeCapabilityError)
+    const bytes = new TextEncoder().encode('file-bytes')
+
+    const result = await bridge.api<{ saved: boolean }>({
+      path: '/api/plugins/kanban/upload',
+      upload: { filename: 'board.png', contentType: 'image/png', bytes: bytes.buffer as ArrayBuffer }
+    })
+
+    const [url, init] = authedFetchCall(fn)
+    expect(url).toBe('/api/plugins/kanban/upload')
+    expect(init.method).toBe('POST')
+    expect(init.body).toBeInstanceOf(FormData)
+    const entries = [...(init.body as FormData).entries()]
+    const [fieldName, formValue] = entries.find(([name]) => name === 'file') ?? []
+    expect(fieldName).toBe('file')
+    expect((formValue as File).name).toBe('board.png')
+    expect((formValue as File).type).toBe('image/png')
+    expect(new Headers(init.headers).get('content-type')).toBeNull()
+    expect(init.credentials).toBe('same-origin')
+    expect(result).toEqual({ saved: true })
+  })
+
+  it('an explicit GET with an upload is a caller bug, not a silent body drop', async () => {
+    const bridge = createWebBridge()
+
+    const error = await bridge
+      .api({ path: '/api/x', method: 'GET', upload: { filename: 'a.png', bytes: new ArrayBuffer(1) } })
+      .catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(WebApiError)
+    expect((error as WebApiError).status).toBe(400)
+  })
+})
+
+describe('web-bridge browser file registry', () => {
+  beforeEach(() => {
+    resetWebFileRegistry()
+  })
+
+  it('getPathForFile mints a memoized virtual path for a browser File', () => {
+    const bridge = createWebBridge()
+    const file = new File(['hello'], 'note.txt', { type: 'text/plain' })
+    const first = bridge.getPathForFile(file)
+    expect(isWebVirtualPath(first)).toBe(true)
+    expect(first).toContain('note.txt')
+    expect(bridge.getPathForFile(file)).toBe(first)
+    expect(bridge.getPathForFile(new File(['x'], 'other.txt'))).not.toBe(first)
+  })
+
+  it('readFileDataUrl serves registered files as data URLs without any fetch', async () => {
+    const fn = mockFetch(200, {})
+    const bridge = createWebBridge()
+    const path = registerWebFile(new File(['hi'], 'a.txt', { type: 'text/plain' }))
+    const dataUrl = await bridge.readFileDataUrl(path)
+    expect(dataUrl.startsWith('data:text/plain;base64,')).toBe(true)
+    expect(atob(dataUrl.split(',')[1] || '')).toBe('hi')
+    expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('readFileDataUrl falls through to the REST endpoint for non-virtual paths', async () => {
+    const fn = mockFetch(200, { dataUrl: 'data:image/png;base64,QQ==' })
+    const bridge = createWebBridge()
+    const dataUrl = await bridge.readFileDataUrl('/srv/real/shot.png')
+    expect(dataUrl).toBe('data:image/png;base64,QQ==')
+    const [url] = authedFetchCall(fn)
+    expect(url).toBe(`/api/fs/read-data-url?path=${encodeURIComponent('/srv/real/shot.png')}`)
+  })
+
+  it('saveImageBuffer registers bytes under a readable virtual path', async () => {
+    const bridge = createWebBridge()
+    const bytes = new TextEncoder().encode('pngbytes')
+    const path = await bridge.saveImageBuffer(bytes, '.png', 'dropped.png')
+    expect(isWebVirtualPath(path)).toBe(true)
+    const dataUrl = await bridge.readFileDataUrl(path)
+    expect(dataUrl.startsWith('data:')).toBe(true)
+    expect(atob(dataUrl.split(',')[1] || '')).toBe('pngbytes')
+  })
+
+  it('saveImageBuffer defaults the name from the extension when unnamed', async () => {
+    const bridge = createWebBridge()
+    const path = await bridge.saveImageBuffer(new Uint8Array([1]), 'png')
+    expect(path.endsWith('/attachment.png')).toBe(true)
+  })
+
+  it('selectPaths rejects directory picks honestly (no browser directory picker)', async () => {
+    const bridge = createWebBridge()
+    const error = await bridge.selectPaths({ directories: true }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(WebBridgeCapabilityError)
+    expect((error as WebBridgeCapabilityError).capability).toBe('selectPaths.directories')
+  })
+
+  it('virtual paths live under the reserved root and never collide with real ones', () => {
+    expect(isWebVirtualPath(`${WEB_FS_ROOT}/1/a.txt`)).toBe(true)
+    expect(isWebVirtualPath('/home/user/a.txt')).toBe(false)
+    expect(isWebVirtualPath('')).toBe(false)
+    expect(isWebVirtualPath(undefined)).toBe(false)
   })
 })
 

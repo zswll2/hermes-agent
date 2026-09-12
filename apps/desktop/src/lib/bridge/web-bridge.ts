@@ -10,7 +10,9 @@
 // with `WebBridgeCapabilityError` instead of silently returning undefined.
 import { buildHermesWebSocketUrl, type GatewayWsUrlResult, type WebSocketAuthParam } from '@hermes/shared'
 
-import type { HermesApiRequest, HermesConnection } from '@/global'
+import type { HermesApiRequest, HermesConnection, HermesSelectPathsOptions } from '@/global'
+
+import { readWebFileDataUrl, registerWebBlob, registerWebFile } from './web-file-registry'
 
 export class WebBridgeCapabilityError extends Error {
   readonly capability: string
@@ -96,23 +98,46 @@ function withProfileParam(path: string, profile?: string | null): string {
   return `${path}${sep}profile=${encodeURIComponent(profile)}`
 }
 
-async function webApi<T>(request: HermesApiRequest): Promise<T> {
-  if (request.upload) {
-    warnOnce('api.upload')
+// Multipart body for HermesApiRequest.upload. FormData lets the browser set
+// the multipart boundary itself — hand-building one is the classic corruption
+// bug. No content-type header: fetch derives it (with boundary) from the body.
+function uploadFormData(upload: NonNullable<HermesApiRequest['upload']>): FormData {
+  const form = new FormData()
 
-    return Promise.reject(new WebBridgeCapabilityError('api.upload'))
+  form.append('file', new Blob([upload.bytes], { type: upload.contentType || 'application/octet-stream' }), upload.filename)
+
+  return form
+}
+
+async function webApi<T>(request: HermesApiRequest): Promise<T> {
+  // pluginRest sends uploads without an explicit method — a multipart body
+  // implies POST.
+  const method = (request.upload ? request.method ?? 'POST' : request.method ?? 'GET').toUpperCase()
+  const upload = request.upload
+
+  if (upload && (method === 'GET' || method === 'HEAD')) {
+    throw new WebApiError(400, 'upload requires a body-bearing method')
   }
 
-  const method = (request.method ?? 'GET').toUpperCase()
-  const hasBody = request.body !== undefined && method !== 'GET' && method !== 'HEAD'
+  const jsonBody = !upload && request.body !== undefined && method !== 'GET' && method !== 'HEAD'
 
-  const res = await fetch(withProfileParam(request.path, request.profile), {
-    method,
-    headers: authHeaders(hasBody),
-    body: hasBody ? JSON.stringify(request.body) : undefined,
-    credentials: 'same-origin',
-    signal: request.timeoutMs ? AbortSignal.timeout(request.timeoutMs) : undefined
-  })
+  const init: RequestInit = upload
+    ? {
+        method,
+        headers: authHeaders(false),
+        body: uploadFormData(upload),
+        credentials: 'same-origin',
+        signal: request.timeoutMs ? AbortSignal.timeout(request.timeoutMs) : undefined
+      }
+    : {
+        method,
+        headers: authHeaders(jsonBody),
+        body: jsonBody ? JSON.stringify(request.body) : undefined,
+        credentials: 'same-origin',
+        signal: request.timeoutMs ? AbortSignal.timeout(request.timeoutMs) : undefined
+      }
+
+  const res = await fetch(withProfileParam(request.path, request.profile), init)
 
   if (res.status === 401 || res.status === 403) {
     throw new WebApiAuthError(res.status, `${res.status}: ${await res.text().catch(() => res.statusText)}`)
@@ -184,9 +209,15 @@ async function webGetConnection(_profile?: null | string): Promise<HermesConnect
   }
 }
 
-// Fallback for direct `readFileDataUrl` call sites; the remote branch of
-// desktop-fs.ts (media rendering) goes through `api()` instead.
+// Registry-first: browser-picked files resolve from the in-tab registry;
+// real backend paths fall through to the remote fs REST endpoint.
 async function webReadFileDataUrl(path: string): Promise<string> {
+  const webFile = await readWebFileDataUrl(path)
+
+  if (webFile) {
+    return webFile
+  }
+
   const res = await fetch(withProfileParam(`/api/fs/read-data-url?path=${encodeURIComponent(path)}`), {
     headers: authHeaders(false),
     credentials: 'same-origin'
@@ -196,6 +227,74 @@ async function webReadFileDataUrl(path: string): Promise<string> {
   const data = (await res.json()) as string | { dataUrl?: string }
 
   return typeof data === 'string' ? data : (data.dataUrl ?? '')
+}
+
+// One long-lived hidden input serves every pick; on-demand creation+removal
+// would race Playwright/automation and re-picks mid-frame.
+const FILE_INPUT_TEST_ID = 'web-bridge-file-input'
+
+let sharedFileInput: HTMLInputElement | null = null
+let pendingPick: null | (() => void) = null
+
+function sharedPickerInput(accept: string, multiple: boolean): HTMLInputElement {
+  if (!sharedFileInput) {
+    const input = document.createElement('input')
+
+    input.type = 'file'
+    input.hidden = true
+    input.dataset.testid = FILE_INPUT_TEST_ID
+    input.addEventListener('cancel', () => pendingPick?.())
+    input.addEventListener('change', () => pendingPick?.())
+    document.body.appendChild(input)
+    sharedFileInput = input
+  }
+
+  // Reset value so picking the same file twice still fires `change`.
+  sharedFileInput.value = ''
+  sharedFileInput.accept = accept
+  sharedFileInput.multiple = multiple
+
+  return sharedFileInput
+}
+
+async function webSelectPaths(options?: HermesSelectPathsOptions): Promise<string[]> {
+  if (options?.directories) {
+    warnOnce('selectPaths.directories')
+
+    return Promise.reject(new WebBridgeCapabilityError('selectPaths.directories'))
+  }
+
+  const accept = (options?.filters || [])
+    .flatMap(filter => filter.extensions.map(extension => `.${extension.replace(/^\./, '')}`))
+    .join(',')
+
+  const input = sharedPickerInput(accept, options?.multiple ?? true)
+
+  const paths = await new Promise<File[]>(resolve => {
+    pendingPick?.()
+
+    pendingPick = () => {
+      pendingPick = null
+      resolve([...input.files ?? []])
+    }
+
+    input.click()
+  })
+
+  return paths.map(file => registerWebFile(file))
+}
+
+async function webSaveImageBuffer(
+  data: ArrayBuffer | Uint8Array,
+  ext: string,
+  name?: string
+): Promise<string> {
+  const normalizedExt = ext.startsWith('.') ? ext : `.${ext}`
+  // slice()/ctor land on Uint8Array<ArrayBuffer>, the only BlobPart-compatible
+  // view under TS 5.7's ArrayBufferLike split.
+  const bytes = data instanceof Uint8Array ? data.slice() : new Uint8Array(data)
+
+  return registerWebBlob(new Blob([bytes]), name || `attachment${normalizedExt}`)
 }
 
 async function webReadClipboard(): Promise<string> {
@@ -336,12 +435,12 @@ export function createWebBridge(): Window['hermesDesktop'] {
     },
     requestMicrophoneAccess: unavailable('requestMicrophoneAccess'),
     readFileText: unavailable('readFileText'),
-    selectPaths: unavailable('selectPaths'),
+    selectPaths: webSelectPaths,
     saveImageFromUrl: unavailable('saveImageFromUrl'),
-    saveImageBuffer: unavailable('saveImageBuffer'),
+    saveImageBuffer: webSaveImageBuffer,
     saveClipboardImage: unavailable('saveClipboardImage'),
-    // Sync member: File objects picked in a browser carry no real path.
-    getPathForFile: () => '',
+    // Browser Files carry no real path; the registry mints a virtual one.
+    getPathForFile: file => registerWebFile(file),
     normalizePreviewTarget: unavailable('normalizePreviewTarget'),
     watchPreviewFile: unavailable('watchPreviewFile'),
     stopPreviewFileWatch: unavailable('stopPreviewFileWatch'),

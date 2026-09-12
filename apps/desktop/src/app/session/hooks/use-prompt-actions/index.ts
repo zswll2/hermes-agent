@@ -6,6 +6,7 @@ import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 import { transcribeAudio } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { stripAnsi } from '@/lib/ansi'
+import { isWebVirtualPath } from '@/lib/bridge/web-file-registry'
 import { type ChatMessage, textPart } from '@/lib/chat-messages'
 import { pathLabel, SLASH_COMMAND_RE } from '@/lib/chat-runtime'
 import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
@@ -190,7 +191,9 @@ export async function uploadComposerAttachment(
 
     const result = await requestGateway<FileAttachResponse>('file.attach', {
       name: label,
-      path,
+      // Virtual web-registry paths don't exist on the gateway; bytes arrive
+      // as data_url and the backend stages them from `name` alone.
+      ...(isWebVirtualPath(path) ? {} : { path }),
       session_id: liveSessionId,
       ...(fileDataUrl ? { data_url: fileDataUrl } : {})
     })
