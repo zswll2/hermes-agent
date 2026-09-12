@@ -56,6 +56,9 @@ except ImportError:
         )
 
 WEB_DIST = Path(os.environ["HERMES_WEB_DIST"]) if "HERMES_WEB_DIST" in os.environ else Path(__file__).parent / "web_dist"
+# Optional browser build of the desktop renderer (apps/desktop/dist-web), served at
+# /app by web_server_dashboard when set. Same deployment-fact shape as WEB_DIST.
+WEB_APP_DIST = Path(os.environ["HERMES_WEB_APP_DIST"]) if "HERMES_WEB_APP_DIST" in os.environ else None
 _log = logging.getLogger(__name__)
 
 
