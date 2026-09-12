@@ -525,10 +525,16 @@ export function TreeGroup({
             style={{ cursor: 'grab' }}
             trailing={
               <>
+                {/* Coarse collapse affordance for tool-panel zones (the
+                    terminal strip a thumb could not close): a 44px button in
+                    the trailing slot; the strip grows to 44px on coarse
+                    (styles.css) and the tab truncates, so hit rects stay
+                    disjoint. The 20px chevron is redundant HERE (both collapse
+                    through the same closer) and would collide — hidden. */}
                 {coarse && isCollapsePane(activeId) && !node.minimized && (
                   <button
                     aria-label={t.common.close}
-                    className="mr-1 grid size-11 shrink-0 place-items-center self-center rounded-md text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+                    className="grid size-11 shrink-0 place-items-center self-stretch rounded-md text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
                     data-zone-collapse={activeId}
                     onClick={() => collapseTreePane(activeId)}
                     onPointerDown={e => e.stopPropagation()}
@@ -537,7 +543,7 @@ export function TreeGroup({
                     <Codicon name="close" size="1rem" />
                   </button>
                 )}
-                {minimizable && (
+                {minimizable && !(coarse && isCollapsePane(activeId)) && (
                   <button
                     aria-label={node.minimized ? t.zones.restore : t.zones.minimize}
                     className="mx-1 grid size-5 shrink-0 place-items-center self-center rounded-md text-(--ui-text-tertiary) opacity-0 transition-opacity hover:bg-(--ui-control-hover-background) hover:text-foreground focus-visible:opacity-100 group-hover/pane-header:opacity-100"

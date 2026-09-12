@@ -3640,8 +3640,11 @@ button,
      titlebar band — a 15px overlap band that safe-area shifts move in
      lockstep (padding + calc add the SAME var), so the overlap itself must
      close here. 23px = cluster bottom 49 + 8px breathing room − band 34.
+     The strip also grows to a 44px touch row (labels truncate) so its own
+     trailing controls reach touch size without overlapping the tabs.
      Fine pointers: no margin, pixel-identical to before. */
   [data-zone-tabstrip] {
     margin-top: 23px;
+    min-height: 44px;
   }
 }
