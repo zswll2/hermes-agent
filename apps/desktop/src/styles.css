@@ -3593,3 +3593,22 @@ button,
     transform: translateX(4%);
   }
 }
+
+/* Fixed titlebar tool clusters (left tools / pane tools / system tools) yield
+   to the iOS status bar: `black-translucent` draws the page under it, so the
+   cluster's children are pushed down by the safe-area inset. padding keeps the
+   fixed element's own top offset (per-cluster `top` vars) intact and collapses
+   to 0 on desktops, where env() reports no inset. */
+[data-slot='titlebar-chrome'] {
+  padding-top: var(--safe-top);
+}
+
+/* Touch devices: titlebar icon buttons meet the 44px minimum touch target.
+   The glyph stays at its designed size — only the hit area grows. Coarse
+   pointers only, so mouse-driven titlebars keep their tight 24px rhythm. */
+@media (pointer: coarse) {
+  [data-slot='titlebar-chrome'] [data-slot='tooltip-trigger'] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

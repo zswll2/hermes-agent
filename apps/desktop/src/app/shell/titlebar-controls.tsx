@@ -276,6 +276,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
           titlebarToolClusterClass,
           'left-(--titlebar-controls-left) top-(--titlebar-controls-top) translate-y-(--titlebar-controls-y-nudge)'
         )}
+        data-slot="titlebar-chrome"
       >
         {leftToolbarTools
           .filter(tool => !tool.hidden)
@@ -299,6 +300,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
             titlebarToolClusterClass,
             'top-[calc(var(--titlebar-controls-top)+var(--right-rail-top-inset,0px))] right-[calc(var(--titlebar-tools-right)+var(--shell-preview-toolbar-gap,0))]'
           )}
+          data-slot="titlebar-chrome"
         >
           {visiblePaneTools.map(tool => (
             <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
@@ -309,6 +311,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
       <div
         aria-label={t.shell.appControls}
         className={cn(titlebarToolClusterClass, 'right-(--titlebar-tools-right) top-(--titlebar-controls-top)')}
+        data-slot="titlebar-chrome"
       >
         {visibleSystemTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
