@@ -258,7 +258,13 @@ export function NarrowOverlays() {
 
   const zoneStrip =
     zonePanes.length > 1 && revealed ? (
-      <PaneTabStrip>
+      <PaneTabStrip
+        // Marks the drawer's strip for the coarse-pointer clearance rule in
+        // styles.css. Deliberately NOT data-zone-tabstrip — that attribute is
+        // the drag-drop stacking hit-test key (drag-session.ts) and the
+        // drawer strip must stay out of drag hit-testing.
+        data-narrow-drawer-strip=""
+      >
         {zonePanes.map(pane => (
           <PaneTab
             active={pane.id === revealed.id}
@@ -271,6 +277,7 @@ export function NarrowOverlays() {
                 setReveal(current => ({ id: pane.id, pinned: current?.pinned ?? false }))
               }
             }}
+            role="tab"
           >
             <PaneTabLabel>{pane.title ?? pane.id}</PaneTabLabel>
           </PaneTab>

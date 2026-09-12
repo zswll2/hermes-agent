@@ -3649,4 +3649,21 @@ button,
     margin-top: 23px;
     min-height: 44px;
   }
+
+  /* Narrow-drawer tab strips: SAME arithmetic, mirrored for the overlay
+     drawer strip (which cannot carry data-zone-tabstrip — that attribute is
+     the drag-drop stacking key and the drawer must stay out of drag
+     hit-testing). Change band/touch sizes in lockstep with the rule above. */
+  [data-narrow-drawer-strip] {
+    margin-top: 23px;
+    min-height: 44px;
+  }
+
+  /* …and the drawer close button rides the same displacement: flush with
+     the strip band (same 23px) so it clears the toolbar clusters by the
+     same 8px. Tabs live at the strip's left; the button at the drawer's
+     right — no hit-rect contact. Fine pointers never render it. */
+  [data-narrow-drawer-close] {
+    top: 23px;
+  }
 }
