@@ -10,7 +10,7 @@ import threading
 import time
 import yaml
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -88,6 +88,84 @@ _HEADLESS_MSG = (
     "Headless backend (hermes serve): web UI disabled — use "
     "`hermes dashboard` for the browser UI."
 )
+
+
+class _ImmutableAssetFiles(StaticFiles):
+    """StaticFiles that marks hashed bundle assets immutable so reloads skip revalidation."""
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = _IMMUTABLE_ASSET_CACHE_CONTROL
+        return response
+
+
+def _mount_web_app_before_catchall(application: FastAPI):
+    """Serve the desktop renderer's browser build (HERMES_WEB_APP_DIST) at /app.
+
+    MUST be called before mount_spa registers its ``/{full_path:path}`` catch-all:
+    Starlette matches in registration order, so a later /app is unreachable. Unset
+    env → no routes and zero behavior change for existing deployments; headless
+    serve never mounts it (same policy as the dashboard SPA). The auth gate is
+    default-deny, so /app lands behind the cookie session automatically.
+    """
+    from hermes_cli.web_server import WEB_APP_DIST
+    from hermes_cli.web_deps import _server
+
+    if os.environ.get("HERMES_SERVE_HEADLESS") == "1":
+        return
+    if not WEB_APP_DIST:
+        return
+
+    def _serve_web_index() -> Response:
+        """index.html with the same token/auth bootstrap the dashboard SPA gets.
+
+        Gated mode injects no token (identity comes from the session cookie);
+        ``__HERMES_AUTH_REQUIRED__`` tells the web bridge which WS auth leg to use.
+        """
+        try:
+            html = (WEB_APP_DIST / "index.html").read_text(encoding="utf-8")
+        except OSError:
+            return JSONResponse(
+                {"error": "Web app not built. Run: cd apps/desktop && npm run build:web"}, status_code=404
+            )
+        gated = bool(getattr(application.state, "auth_required", False))
+        token_js = "" if gated else f'window.__HERMES_SESSION_TOKEN__="{_server()._SESSION_TOKEN}";'
+        bootstrap_script = (
+            f"<script>{token_js}"
+            f"window.__HERMES_AUTH_REQUIRED__={'true' if gated else 'false'};"
+            "</script>"
+        )
+        html = html.replace("</head>", f"{bootstrap_script}</head>", 1)
+        return HTMLResponse(html, headers=_NO_STORE)
+
+    application.mount(
+        "/app/assets", _ImmutableAssetFiles(directory=WEB_APP_DIST / "assets", check_dir=False), name="web-app-assets"
+    )
+
+    # The build uses relative asset URLs (base: './'), which resolve against the
+    # document's directory: /app would resolve them against the site root. Canonical
+    # URL is /app/ — redirect the bare form and any non-file deep path there.
+    @application.get("/app")
+    async def serve_web_app_root(request: Request):
+        query = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(f"/app/{query}", status_code=307)
+
+    @application.get("/app/{full_path:path}")
+    async def serve_web_app_path(full_path: str):
+        # Real files (emojibase data, icons, ds-assets) are served as files; full_path
+        # "" is the canonical app URL. Anything else redirects to /app/ so relative
+        # asset URLs keep resolving correctly (hash routes live after the #).
+        if full_path == "":
+            return _serve_web_index()
+        file_path = WEB_APP_DIST / full_path
+        if (
+            file_path.resolve().is_relative_to(WEB_APP_DIST.resolve())
+            and file_path.exists()
+            and file_path.is_file()
+        ):
+            return FileResponse(file_path)
+        return RedirectResponse("/app/", status_code=307)
 
 
 def mount_spa(application: FastAPI):
@@ -189,19 +267,13 @@ def mount_spa(application: FastAPI):
             content=css, media_type="text/css", headers={"Cache-Control": _IMMUTABLE_ASSET_CACHE_CONTROL}
         )
 
-    class _ImmutableAssetFiles(StaticFiles):
-        """StaticFiles that marks hashed bundle assets immutable so reloads skip revalidation."""
-
-        async def get_response(self, path: str, scope):
-            response = await super().get_response(path, scope)
-            if response.status_code == 200:
-                response.headers["Cache-Control"] = _IMMUTABLE_ASSET_CACHE_CONTROL
-            return response
-
     # check_dir=False: the dist may not exist yet; StaticFiles 404s per-request until it does.
     application.mount(
         "/assets", _ImmutableAssetFiles(directory=WEB_DIST / "assets", check_dir=False), name="assets"
     )
+
+    # Before the catch-all below: a later /app registration would be unreachable.
+    _mount_web_app_before_catchall(application)
 
     @application.get("/{full_path:path}")
     async def serve_spa(full_path: str, request: Request):
