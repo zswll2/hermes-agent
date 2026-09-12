@@ -142,6 +142,18 @@ export function NarrowOverlays() {
         />
       ))}
 
+      {/* Backdrop for PINNED reveals only (titlebar toggle / ⌘B / touch):
+          hover reveals keep their weightless come-and-go, while a drawer the
+          user opened on purpose gets an obvious tap-anywhere-to-close target —
+          the only dismissal that works without a mouse. */}
+      {reveal?.pinned && revealed && (
+        <div
+          aria-hidden
+          className="absolute inset-0 z-30 bg-black/30"
+          onPointerDown={() => setReveal(null)}
+        />
+      )}
+
       {revealed && (
         <div
           className={cn(
@@ -154,6 +166,7 @@ export function NarrowOverlays() {
           // panes beneath it — a see-through overlay reads as text bleeding
           // through text. Contract: `[data-glass-opaque]` in styles.css.
           data-glass-opaque=""
+          data-narrow-drawer={sideOf(revealed)}
           onMouseLeave={() => setReveal(current => (current?.pinned ? current : null))}
           // Match the pane's docked width (sessions ~237px, files its rail
           // width) instead of a fat fixed 20rem — capped for tiny screens.

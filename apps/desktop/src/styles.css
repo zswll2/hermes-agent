@@ -3530,3 +3530,66 @@ html:has([data-hud-shell]) [data-slot='popover-content'] {
 [data-hud-shell] [data-slot='composer-bounds'] *::-webkit-scrollbar {
   display: none;
 }
+
+/* ── Touch / iOS viewport adaptations ──────────────────────────────────────
+   Neutral on desktop: env() safe-area insets are 0 outside notched devices,
+   the 16px input floor only matters to iOS Safari's focus-zoom heuristic,
+   and --keyboard-inset stays 0 where visualViewport matches the window. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --keyboard-inset: 0px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* iOS Safari zooms the whole viewport when a focusable text surface is smaller
+   than 16px — the composer's rich input must sit at or above that floor. */
+[data-slot='composer-rich-input'] {
+  font-size: max(1rem, 16px);
+}
+
+/* Keep transcript scrolling contained: no whole-page rubber-banding past the
+   thread, and no double-tap-zoom delay on interactive controls. */
+[data-chat-surface] {
+  overscroll-behavior: contain;
+}
+
+button,
+[role='button'] {
+  touch-action: manipulation;
+}
+
+/* The composer dock clears the home indicator and the on-screen keyboard
+   (live var from use-visual-viewport-inset), not just its static shell pad. */
+[data-slot='composer-dock'] {
+  padding-bottom: max(var(--composer-shell-pad-block-end), var(--safe-bottom), var(--keyboard-inset));
+}
+
+/* Narrow-viewport drawer (session sidebar et al. below the collapse
+   breakpoint): clear the notch and slide in from its edge. */
+[data-narrow-drawer='left'] {
+  padding-top: var(--safe-top);
+  animation: narrow-drawer-in-left 160ms ease-out;
+}
+
+[data-narrow-drawer='right'] {
+  padding-top: var(--safe-top);
+  animation: narrow-drawer-in-right 160ms ease-out;
+}
+
+@keyframes narrow-drawer-in-left {
+  from {
+    opacity: 0.6;
+    transform: translateX(-4%);
+  }
+}
+
+@keyframes narrow-drawer-in-right {
+  from {
+    opacity: 0.6;
+    transform: translateX(4%);
+  }
+}
