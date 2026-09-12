@@ -91,4 +91,36 @@ describe('narrow overlay of a stacked zone', () => {
     expect(getByTestId('sessions-body')).toBeTruthy()
     expect(overlayTab('sessions')).toBeNull()
   })
+
+  // A row selection folds the drawer without knowing which zone tab fronts it
+  // (closeNarrowSidebarDrawer always names the sessions pane) — close is
+  // side-scoped, not tab-scoped.
+  it('a close naming one left pane dismisses the drawer whichever zone tab is active', () => {
+    const { getByTestId, queryByTestId } = render(<NarrowOverlays />)
+
+    revealPane('bots')
+    expect(getByTestId('bots-body')).toBeTruthy()
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'sessions', mode: 'close' } }))
+    })
+
+    expect(queryByTestId('bots-body')).toBeNull()
+  })
+
+  it('a close naming a left pane leaves a right-side reveal alone', () => {
+    registerPane('files', 'files', { collapsible: true, placement: 'right', width: '200px' }, 'file rail')
+    $layoutTree.set(split('row', [group(['sessions', 'bots']), group(['workspace']), group(['files'])]))
+
+    const { getByTestId } = render(<NarrowOverlays />)
+
+    revealPane('files')
+    expect(getByTestId('files-body')).toBeTruthy()
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'sessions', mode: 'close' } }))
+    })
+
+    expect(getByTestId('files-body')).toBeTruthy()
+  })
 })

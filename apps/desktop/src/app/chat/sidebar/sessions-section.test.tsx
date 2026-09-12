@@ -9,6 +9,16 @@ import type { VirtualSessionListProps } from './virtual-session-list'
 
 afterEach(cleanup)
 
+// The resume path folds the narrow drawer after handing off to the caller —
+// spy on the layout seam without disturbing the rest of the module.
+const { closeNarrowSidebarDrawer } = vi.hoisted(() => ({ closeNarrowSidebarDrawer: vi.fn() }))
+
+vi.mock('@/store/layout', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/store/layout')>()
+
+  return { ...actual, closeNarrowSidebarDrawer }
+})
+
 vi.mock('@/i18n', () => ({
   useI18n: () => ({
     t: {
@@ -36,10 +46,14 @@ vi.mock('./virtual-session-list', () => ({
   }
 }))
 
+const mockRowPropsHistory: Array<{ onResume?: () => void; session: SessionInfo }> = []
+
 vi.mock('./session-row', () => ({
-  SidebarSessionRow: ({ session }: { session: SessionInfo }) => (
-    <div data-testid={`session-row-${session.id}`}>{session.id}</div>
-  )
+  SidebarSessionRow: (props: { session: SessionInfo }) => {
+    mockRowPropsHistory.push(props)
+
+    return <div data-testid={`session-row-${props.session.id}`}>{props.session.id}</div>
+  }
 }))
 
 function makeSession(id: string, startedAt = 1000): SessionInfo {
@@ -180,5 +194,64 @@ describe('SidebarSessionsSection memoization & virtualizer stability', () => {
 
     const thirdRowsRef = mockVirtualListPropsHistory[2].rows
     expect(thirdRowsRef).not.toBe(secondRowsRef)
+  })
+})
+
+describe('session resume folds the narrow drawer', () => {
+  const sectionProps = (onResumeSession: (id: string, session?: SessionInfo) => void, sessions: SessionInfo[]) => ({
+    activeSessionId: null,
+    emptyState: <div>Empty</div>,
+    label: 'Sessions',
+    onArchiveSession: noop,
+    onDeleteSession: noop,
+    onResumeSession,
+    onToggle: noop,
+    onTogglePin: noop,
+    onToggleUnread: noop,
+    open: true,
+    pinned: false,
+    sessions
+  })
+
+  it('virtual path: the wrapped onResumeSession hands off to the caller, then folds', () => {
+    mockVirtualListPropsHistory.length = 0
+    closeNarrowSidebarDrawer.mockClear()
+
+    const order: string[] = []
+    const onResumeSession = vi.fn(() => order.push('caller'))
+
+    closeNarrowSidebarDrawer.mockImplementation(() => order.push('closer'))
+
+    render(<SidebarSessionsSection {...sectionProps(onResumeSession, generateSessions(VIRTUALIZE_THRESHOLD + 5))} />)
+
+    expect(mockVirtualListPropsHistory.length).toBe(1)
+    mockVirtualListPropsHistory[0].onResumeSession('session-2')
+
+    expect(onResumeSession).toHaveBeenCalledWith('session-2', undefined)
+    expect(closeNarrowSidebarDrawer).toHaveBeenCalledTimes(1)
+    expect(order).toEqual(['caller', 'closer'])
+  })
+
+  it('flat path: a row resume hands off to the caller, then folds', () => {
+    mockRowPropsHistory.length = 0
+    closeNarrowSidebarDrawer.mockClear()
+
+    const order: string[] = []
+    const onResumeSession = vi.fn(() => order.push('caller'))
+
+    closeNarrowSidebarDrawer.mockImplementation(() => order.push('closer'))
+
+    const sessions = generateSessions(3)
+
+    render(<SidebarSessionsSection {...sectionProps(onResumeSession, sessions)} />)
+
+    const row = mockRowPropsHistory.find(props => props.session.id === 'session-2')
+
+    expect(row).toBeTruthy()
+    row!.onResume!()
+
+    expect(onResumeSession).toHaveBeenCalledWith('session-2', sessions[1])
+    expect(closeNarrowSidebarDrawer).toHaveBeenCalledTimes(1)
+    expect(order).toEqual(['caller', 'closer'])
   })
 })

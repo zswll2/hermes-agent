@@ -24,6 +24,7 @@ import {
   $sidebarListGroupIds,
   $sidebarShowAllSessions,
   $sidebarWorkspaceNodeOpen,
+  closeNarrowSidebarDrawer,
   listGroupNodeId,
   toggleWorkspaceNodeCollapsed
 } from '@/store/layout'
@@ -260,6 +261,18 @@ export function SidebarSessionsSection({
   // grouped/tree views always sort by creation date and never drag.
   const sessionsDraggable = sortable && !!onReorderSessions
 
+  // Resuming a session is the drawer's exit on narrow viewports: the user
+  // picked a conversation to SEE it, so the left drawer folds (desktop docked
+  // sidebar is untouched — the closer is narrow-gated). Both list paths (flat
+  // renderRow and VirtualSessionList) flow through this single wrapper.
+  const resumeSession = useCallback(
+    (sessionId: string, session?: SessionInfo) => {
+      onResumeSession(sessionId, session)
+      closeNarrowSidebarDrawer()
+    },
+    [onResumeSession]
+  )
+
   // Only Pinned arrives pre-ordered as a flat sequence. Recents keeps its
   // recency sort — the drag order is layered on per date group below, so the
   // buckets stay truthful and a reorder never costs the list its dividers.
@@ -280,7 +293,7 @@ export function SidebarSessionsSection({
         onDelete: () => onDeleteSession(session.id),
         onPin: () => onTogglePin(sessionPinId(session)),
         onToggleUnread: () => onToggleUnread(session.id),
-        onResume: () => onResumeSession(session.id, session),
+        onResume: () => resumeSession(session.id, session),
         reorderable: draggable && !branchStem,
         session,
         showProfile: showProfileTags,
@@ -302,10 +315,10 @@ export function SidebarSessionsSection({
       onArchiveSession,
       onBranchSession,
       onDeleteSession,
-      onResumeSession,
       onTogglePin,
       onToggleUnread,
       pinned,
+      resumeSession,
       showProfileTags
     ]
   )
@@ -582,7 +595,7 @@ export function SidebarSessionsSection({
         onArchiveSession={onArchiveSession}
         onBranchSession={onBranchSession}
         onDeleteSession={onDeleteSession}
-        onResumeSession={onResumeSession}
+        onResumeSession={resumeSession}
         onTogglePin={onTogglePin}
         onToggleUnread={onToggleUnread}
         pinned={pinned}
