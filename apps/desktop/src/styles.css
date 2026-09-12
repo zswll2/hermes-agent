@@ -3539,6 +3539,26 @@ html:has([data-hud-shell]) [data-slot='popover-content'] {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --keyboard-inset: 0px;
+  /* Coarse pointers add this much clearance below the in-flow titlebar for
+     the transcript's first bubble (thread/list.tsx top pad). Fine pointers
+     keep 0 — pixel-neutral. */
+  --chat-top-gap: 0px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --chat-top-gap: 6px;
+  }
+}
+
+/* The app shell root is the ONE in-flow padding site for the top safe area:
+   titlebar band, layout tree, and the narrow drawers' containing block all
+   shift below the notch together. Fixed surfaces opt in per-element with
+   calc(var(--safe-top)) instead (they don't ride ancestor padding). Applies
+   to the browser-popout shell too — the same page can be installed as a
+   PWA there. */
+[data-contrib-shell] {
+  padding-top: var(--safe-top);
 }
 
 html {
@@ -3569,14 +3589,14 @@ button,
 }
 
 /* Narrow-viewport drawer (session sidebar et al. below the collapse
-   breakpoint): clear the notch and slide in from its edge. */
+   breakpoint) slides in from its edge. No safe-area padding here: the
+   drawer's containing block already shifted below the notch via the
+   shell-root padding, so an extra inset would double it. */
 [data-narrow-drawer='left'] {
-  padding-top: var(--safe-top);
   animation: narrow-drawer-in-left 160ms ease-out;
 }
 
 [data-narrow-drawer='right'] {
-  padding-top: var(--safe-top);
   animation: narrow-drawer-in-right 160ms ease-out;
 }
 
@@ -3594,14 +3614,10 @@ button,
   }
 }
 
-/* Fixed titlebar tool clusters (left tools / pane tools / system tools) yield
-   to the iOS status bar: `black-translucent` draws the page under it, so the
-   cluster's children are pushed down by the safe-area inset. padding keeps the
-   fixed element's own top offset (per-cluster `top` vars) intact and collapses
-   to 0 on desktops, where env() reports no inset. */
-[data-slot='titlebar-chrome'] {
-  padding-top: var(--safe-top);
-}
+/* Fixed titlebar tool clusters clear the iOS status bar through their
+   `top:` calc (titlebar-controls.tsx adds var(--safe-top) there). No
+   padding rule anymore — with the calc top it would double-count the
+   inset. */
 
 /* Touch devices: titlebar icon buttons meet the 44px minimum touch target.
    The glyph stays at its designed size — only the hit area grows. Coarse
@@ -3617,5 +3633,15 @@ button,
      same 44px touch minimum there. */
   [data-tree-edit-bar] button {
     min-height: 44px;
+  }
+
+  /* Toolbar↔tab clearance: coarse clusters occupy y 5..49 (top 5 + 44px
+     targets) while zone tab strips start right below the 34px in-flow
+     titlebar band — a 15px overlap band that safe-area shifts move in
+     lockstep (padding + calc add the SAME var), so the overlap itself must
+     close here. 23px = cluster bottom 49 + 8px breathing room − band 34.
+     Fine pointers: no margin, pixel-identical to before. */
+  [data-zone-tabstrip] {
+    margin-top: 23px;
   }
 }

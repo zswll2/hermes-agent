@@ -274,7 +274,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         aria-label={t.shell.windowControls}
         className={cn(
           titlebarToolClusterClass,
-          'left-(--titlebar-controls-left) top-(--titlebar-controls-top) translate-y-(--titlebar-controls-y-nudge)'
+          'left-(--titlebar-controls-left) top-[calc(var(--titlebar-controls-top)+var(--safe-top,0px))] translate-y-(--titlebar-controls-y-nudge)'
         )}
         data-slot="titlebar-chrome"
       >
@@ -298,7 +298,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
           aria-label={t.shell.paneControls}
           className={cn(
             titlebarToolClusterClass,
-            'top-[calc(var(--titlebar-controls-top)+var(--right-rail-top-inset,0px))] right-[calc(var(--titlebar-tools-right)+var(--shell-preview-toolbar-gap,0))]'
+            'top-[calc(var(--titlebar-controls-top)+var(--right-rail-top-inset,0px)+var(--safe-top,0px))] right-[calc(var(--titlebar-tools-right)+var(--shell-preview-toolbar-gap,0))]'
           )}
           data-slot="titlebar-chrome"
         >
@@ -310,7 +310,10 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
 
       <div
         aria-label={t.shell.appControls}
-        className={cn(titlebarToolClusterClass, 'right-(--titlebar-tools-right) top-(--titlebar-controls-top)')}
+        className={cn(
+          titlebarToolClusterClass,
+          'right-(--titlebar-tools-right) top-[calc(var(--titlebar-controls-top)+var(--safe-top,0px))]'
+        )}
         data-slot="titlebar-chrome"
       >
         {visibleSystemTools.map(tool => (

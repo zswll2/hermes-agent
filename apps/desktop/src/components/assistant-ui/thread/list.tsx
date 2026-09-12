@@ -610,7 +610,11 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
 
   const threadContentTopPad = secondaryWindow
     ? 'pt-[calc(var(--titlebar-height)+0.75rem)]'
-    : 'pt-[calc(var(--titlebar-height)-0.5rem)]'
+    : // Main shell pins --titlebar-height to 0px, so the raw expression goes
+      // negative and CSS clamps padding to 0 — max() keeps that baseline
+      // (fine pointer: 0, pixel-identical) while letting the coarse-gated
+      // --chat-top-gap (6px) actually take effect instead of being clamped away.
+      'pt-[calc(max(var(--titlebar-height)-0.5rem,0px)+var(--chat-top-gap,0px))]'
 
   useEffect(() => publishThreadAtBottom(isAtBottom, { paneVisible }), [isAtBottom, paneVisible])
   useEffect(() => () => resetPublishedThreadScroll({ paneVisible }), [paneVisible])

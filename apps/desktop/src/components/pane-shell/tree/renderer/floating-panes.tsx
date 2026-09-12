@@ -48,8 +48,14 @@ const readStored = (): Record<string, StoredRect> => readJson<Record<string, Sto
 const viewportNow = (): FloatingViewport => ({
   width: window.innerWidth,
   height: window.innerHeight,
-  top: TITLEBAR_HEIGHT
+  top: TITLEBAR_HEIGHT + safeTopPx()
 })
+
+/** Live --safe-top in px (env() inset; 0 on desktops). Fixed cards clamp
+ *  against it because they don't ride the shell root's padding. */
+function safeTopPx(): number {
+  return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-top')) || 0
+}
 
 function FloatingPane({ pane }: { pane: Contribution }) {
   const chrome = paneChrome(pane)
