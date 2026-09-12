@@ -39,6 +39,7 @@ import {
 } from '@/components/pane-shell/tree/renderer/drag-session'
 import { $treeDragging, type DropHint, revealTreePane, SESSION_TILE_DRAG } from '@/components/pane-shell/tree/store'
 import type { EngineZone, ZoneRect } from '@/components/pane-shell/tree/zones-engine'
+import { tabSplitAllowedNow } from '@/lib/tab-split-policy'
 import { openSessionTile, type TileDock } from '@/store/session-states'
 
 import { requestComposerInsertRefs } from './composer/focus'
@@ -176,7 +177,13 @@ export function startSessionDrag(
 
     onCommit() {
       if (split) {
-        openSessionTile(payload.id, split.pos, split.anchor, split.before)
+        // Touch/narrow viewports reject split-shaped drops (same policy as
+        // pane-tab drags — see drag-session.ts); stack/center drops pass.
+        if (split.pos !== 'center' && !tabSplitAllowedNow()) {
+          return
+        }
+
+        openSessionTile(payload.id, split.pos, split.anchor, split.before, undefined, split.pos === 'center' ? undefined : 'user')
         // A tile for this session may already exist (openSessionTile is
         // idempotent — e.g. persisted from an earlier run): a drop must never
         // feel dead, so front/unhide/un-dismiss it either way.

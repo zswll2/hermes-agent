@@ -67,6 +67,7 @@ import {
   NEW_SESSION_DRAG,
   noteActiveTreeGroup,
   reloadTreePane,
+  resetLayoutTree,
   restoreTreePane,
   SESSION_TILE_DRAG,
   setStripTabHidden,
@@ -212,6 +213,12 @@ function ZoneMenu({
             label: minimized ? t.zones.restore : (minimizeLabel ?? t.zones.minimize),
             onSelect: () => setTreeGroupMinimized(nodeId, !minimized)
           })}
+        <kit.Separator />
+        {renderActionItem(kit, {
+          icon: 'discard',
+          label: t.zones.reset,
+          onSelect: () => resetLayoutTree()
+        })}
       </>
     )
   }

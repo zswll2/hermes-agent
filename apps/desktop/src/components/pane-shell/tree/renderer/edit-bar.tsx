@@ -72,6 +72,7 @@ export function TreeEditBar() {
   return (
     <div
       className="absolute z-50 flex w-[26rem] max-w-[calc(100%-2rem)] flex-col rounded-xl border border-(--ui-stroke-secondary) bg-popover text-popover-foreground shadow-2xl [-webkit-app-region:no-drag]"
+      data-tree-edit-bar=""
       ref={cardRef}
       style={pos ? { left: pos.x, top: pos.y } : { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
     >
@@ -92,7 +93,7 @@ export function TreeEditBar() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5" onPointerDown={e => e.stopPropagation()}>
-          <Button onClick={resetLayoutTree} size="sm" variant="ghost">
+          <Button aria-label={t.zones.reset} data-tree-edit-reset="" onClick={resetLayoutTree} size="sm" variant="ghost">
             {t.zones.reset}
           </Button>
           <Button onClick={() => $layoutEditMode.set(false)} size="sm" variant="outline">
