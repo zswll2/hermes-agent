@@ -1,3 +1,6 @@
+// Web-build only: installs the browser shim for `window.hermesDesktop` before
+// any module below can read it (dead-code-eliminated in the Electron build).
+import '@/lib/bridge/install'
 import './styles.css'
 // Side-effect: reports in-flight turns to the main process for the quit guard.
 import './store/active-work'
