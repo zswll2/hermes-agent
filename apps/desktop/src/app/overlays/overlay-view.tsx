@@ -78,9 +78,12 @@ export function OverlayView({
         // Equidistant inset on every side. The top value is driven by the
         // titlebar height so the card clears the OS traffic-lights vertically;
         // since the card top already sits below them, the left needs no extra
-        // inset — keeping all sides equal so the card is ~full-width at any size.
-        'p-[calc(var(--titlebar-height)+0.625rem)]',
-        'sm:p-[calc(var(--titlebar-height)+0.875rem)]'
+        // inset — keeping all sides equal so the card is ~full-width at any
+        // size. The safe-area inset joins the top calc only (fixed surface,
+        // no ancestor padding); the drag-band semantics of
+        // --titlebar-height itself are unchanged.
+        'p-[calc(var(--titlebar-height)+var(--safe-top,0px)+0.625rem)]',
+        'sm:p-[calc(var(--titlebar-height)+var(--safe-top,0px)+0.875rem)]'
       )}
       // Every OverlayView-based overlay (settings, command-center, agents, cron,
       // profiles, star map, …) covers the chat while the composer stays mounted
