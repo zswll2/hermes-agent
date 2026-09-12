@@ -36,6 +36,12 @@ export interface SplitNode {
   children: LayoutNode[]
   /** Parallel to children; relative flex weights. */
   weights: number[]
+  /** 'user' marks a split a DRAG created (edge-pos drop from either drag
+   *  path). It persists with the tree and is the narrow-viewport fold's only
+   *  trigger: programmatic splits (default tree, presets, adoption/dock
+   *  healing) never carry it, and pre-existing unmarked splits are left
+   *  alone — the "restore single column" reset entry covers those. */
+  origin?: 'user'
 }
 
 export interface GroupNode {
@@ -76,13 +82,15 @@ export const split = (
   orientation: Orientation,
   children: LayoutNode[],
   weights?: number[],
-  id?: string
+  id?: string,
+  origin?: 'user'
 ): SplitNode => ({
   type: 'split',
   id: id ?? nodeId('s'),
   orientation,
   children,
-  weights: weights ?? children.map(() => 1)
+  weights: weights ?? children.map(() => 1),
+  origin
 })
 
 // ---------------------------------------------------------------------------
@@ -260,7 +268,11 @@ export function insertAtGroup(
   /** Edge splits only: the [target zone, added pane] weight pair (default
    *  even). Lets a re-opened tile take the share it held when it closed
    *  instead of half the anchor zone. */
-  edgeWeights?: readonly [number, number]
+  edgeWeights?: readonly [number, number],
+  /** Tags the created split `origin: 'user'` — set ONLY by the two drag
+   *  commit paths, so the narrow-viewport fold never touches programmatic
+   *  splits (presets, adoption, dock healing). */
+  origin?: 'user'
 ): LayoutNode | null {
   const walk = (n: LayoutNode): LayoutNode => {
     if (n.type === 'group') {
@@ -291,7 +303,13 @@ export function insertAtGroup(
       const children = leading ? [added, n] : [n, added]
       const [targetWeight, addedWeight] = edgeWeights ?? [1, 1]
 
-      return split(orientation, children, leading ? [addedWeight, targetWeight] : [targetWeight, addedWeight])
+      return split(
+        orientation,
+        children,
+        leading ? [addedWeight, targetWeight] : [targetWeight, addedWeight],
+        undefined,
+        origin
+      )
     }
 
     return { ...n, children: n.children.map(walk) }
@@ -330,7 +348,8 @@ function shapeSignature(node: LayoutNode): string {
 export function movePane(
   root: LayoutNode,
   paneId: string,
-  target: { groupId: string; pos: DropPosition; before?: null | string }
+  target: { groupId: string; pos: DropPosition; before?: null | string },
+  origin?: 'user'
 ): LayoutNode {
   const from = findGroupOfPane(root, paneId)
 
@@ -350,7 +369,7 @@ export function movePane(
     return root
   }
 
-  const next = insertAtGroup(without, target.groupId, paneId, target.pos, target.before) ?? root
+  const next = insertAtGroup(without, target.groupId, paneId, target.pos, target.before, undefined, undefined, origin) ?? root
 
   return shapeSignature(next) === shapeSignature(root) ? root : next
 }
@@ -366,10 +385,11 @@ export function movePanes(
   root: LayoutNode,
   paneIds: readonly string[],
   target: { groupId: string; pos: DropPosition; before?: null | string },
-  activeId: string = paneIds[0] ?? ''
+  activeId: string = paneIds[0] ?? '',
+  origin?: 'user'
 ): LayoutNode {
   if (paneIds.length <= 1) {
-    return paneIds.length === 1 ? movePane(root, paneIds[0], target) : root
+    return paneIds.length === 1 ? movePane(root, paneIds[0], target, origin) : root
   }
 
   let without: LayoutNode | null = root
@@ -389,7 +409,16 @@ export function movePanes(
   // Only the lead activates — `insertAtGroup(activate)` would otherwise front
   // each follower in turn.
   const lead = paneIds[0]
-  let next: LayoutNode | null = insertAtGroup(without, target.groupId, lead, target.pos, target.before)
+  let next: LayoutNode | null = insertAtGroup(
+    without,
+    target.groupId,
+    lead,
+    target.pos,
+    target.before,
+    undefined,
+    undefined,
+    origin
+  )
 
   for (let i = 1; next && i < paneIds.length; i++) {
     const leadGroup = findGroupOfPane(next, lead)

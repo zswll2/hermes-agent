@@ -1439,7 +1439,8 @@ export function openSessionTile(
   dir: TileDock = 'right',
   anchor?: string,
   before?: null | string,
-  explicitScope?: SessionTileWorkspaceScope
+  explicitScope?: SessionTileWorkspaceScope,
+  origin?: 'user'
 ) {
   const tiles = $sessionTiles.get()
   const existing = tiles.find(t => t.storedSessionId === storedSessionId)
@@ -1507,7 +1508,7 @@ export function openSessionTile(
   const target = tree ? findGroupOfPane(tree, dock ?? 'workspace')?.id : null
 
   if (target) {
-    moveTreePane(`${TILE_PANE_PREFIX}${storedSessionId}`, { before: before ?? null, groupId: target, pos: dir })
+    moveTreePane(`${TILE_PANE_PREFIX}${storedSessionId}`, { before: before ?? null, groupId: target, pos: dir }, origin)
     patchSessionTile(storedSessionId, { anchor: dock, before: before ?? undefined, dir })
     syncTileStripOrder()
   }

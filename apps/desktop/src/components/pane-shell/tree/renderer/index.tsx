@@ -25,6 +25,7 @@ import { type ReactNode, useEffect } from 'react'
 
 import { useLayoutEditHotkey } from '../../edit-mode'
 import { publishWorkspaceGeometry } from '../../geometry'
+import { watchNarrowUserSplitFolding } from '../narrow-fold'
 import { $layoutTree, trackActiveTreeGroup } from '../store'
 import { ZoneEditor } from '../zone-editor'
 
@@ -43,6 +44,9 @@ export function LayoutTreeRoot({ children }: { children?: ReactNode }) {
   // Publish --workspace-left/right so chrome (titlebar title) aligns to the
   // main pane's geometry in plain CSS.
   useEffect(publishWorkspaceGeometry, [])
+  // Entering a narrow viewport folds drag-created (origin:'user') splits
+  // whose small column would be an unreadable sliver there.
+  useEffect(watchNarrowUserSplitFolding, [])
 
   if (!tree) {
     return null

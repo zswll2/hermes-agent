@@ -3611,4 +3611,11 @@ button,
     min-height: 44px;
     min-width: 44px;
   }
+
+  /* The layout editor card is the narrow-viewport path to "restore single
+     column" (Layout tool → edit mode → Reset): its action buttons meet the
+     same 44px touch minimum there. */
+  [data-tree-edit-bar] button {
+    min-height: 44px;
+  }
 }

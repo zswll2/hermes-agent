@@ -1527,14 +1527,18 @@ export function dockPaneBeside(paneId: string, anchorPaneId: string) {
   }
 }
 
-export function moveTreePane(paneId: string, target: { groupId: string; pos: DropPosition; before?: null | string }) {
+export function moveTreePane(
+  paneId: string,
+  target: { groupId: string; pos: DropPosition; before?: null | string },
+  origin?: 'user'
+) {
   const tree = $layoutTree.get()
 
   if (!tree) {
     return
   }
 
-  const next = movePaneOp(tree, paneId, target)
+  const next = movePaneOp(tree, paneId, target, origin)
 
   // movePane returns the SAME root for no-op drops ("stays here") — only a
   // real move customizes the preset or pins the pane as user-placed.
@@ -1587,7 +1591,8 @@ export function applyTree(tree: LayoutNode, presetId: string) {
 export function moveTreePanes(
   paneIds: readonly string[],
   target: { groupId: string; pos: DropPosition; before?: null | string },
-  activeId?: string
+  activeId?: string,
+  origin?: 'user'
 ) {
   const tree = $layoutTree.get()
 
@@ -1595,7 +1600,7 @@ export function moveTreePanes(
     return
   }
 
-  const next = movePanesOp(tree, paneIds, target, activeId)
+  const next = movePanesOp(tree, paneIds, target, activeId, origin)
 
   if (next !== tree) {
     commit(next)

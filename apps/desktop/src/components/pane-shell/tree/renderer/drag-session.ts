@@ -34,6 +34,7 @@ import { createDragGhost, type DragGhost } from '@/lib/drag-ghost'
 import { ESCAPE_PRIORITY, pushEscapeLayer } from '@/lib/escape-layers'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { reorderCommitHaptic, reorderStepHaptic } from '@/lib/reorder'
+import { tabSplitAllowedNow } from '@/lib/tab-split-policy'
 
 import type { DropPosition } from '../model'
 import { $dropHint, $treeDragging, type DropHint, mergeTreeZones, moveTreePanes, reorderTreePanes } from '../store'
@@ -587,10 +588,21 @@ export function startPaneDrag(
           // strip = stack at the divider slot; center = join the stack;
           // an edge = split the zone and land there. The whole selection
           // rides — the pressed tab fronts at the destination.
+          const pos = hint.pos ?? 'center'
+
+          // Touch/narrow viewports reject split-shaped drops outright: a
+          // committed sliver column is unreadable and its edge targets
+          // overlap the drawer hover strips. Denial keeps the tab selection
+          // (retryable), same as a deny-area release.
+          if (pos !== 'center' && !tabSplitAllowedNow()) {
+            return
+          }
+
           moveTreePanes(
             moving,
-            { groupId: hint.groupId, pos: hint.pos ?? 'center', before: hint.stack?.before },
-            paneId
+            { groupId: hint.groupId, pos, before: hint.stack?.before },
+            paneId,
+            pos === 'center' ? undefined : 'user'
           )
           spendSelection()
         }
