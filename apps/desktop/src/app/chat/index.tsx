@@ -64,7 +64,6 @@ import { droppedFileInlineRefs } from './composer/inline-refs'
 import { ComposerSurfaceProvider, useComposerScope, useComposerSurfaceId } from './composer/scope'
 import type { ChatBarState } from './composer/types'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
-import { useEdgeSwipeDrawer } from './hooks/use-edge-swipe-drawer'
 import { type DragKind, useFileDropZone } from './hooks/use-file-drop-zone'
 import { useVisualViewportInset } from './hooks/use-visual-viewport-inset'
 import { shouldShowIntro } from './intro-visibility'
@@ -491,7 +490,6 @@ const ChatViewContent = memo(function ChatViewContent({
   }, [queueSessionKey, selectedSessionId, sessions])
 
   useVisualViewportInset()
-  useEdgeSwipeDrawer()
 
   // Transcript-side stops (the streaming message's hover Stop, the runtime's
   // cancel) are explicit halts, same as the composer's Stop button: park any
