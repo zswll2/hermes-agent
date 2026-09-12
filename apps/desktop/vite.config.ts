@@ -112,8 +112,14 @@ const emojibaseAssets = () => ({
   }
 })
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, mode }) => ({
   base: './',
+  // Browser build (`vite build --mode web`) reuses this exact renderer source;
+  // `__HERMES_WEB__` must be defined in BOTH modes — the Electron build needs
+  // the `'false'` replacement so the web-bridge install branch becomes `if (false)`
+  // and is dead-code-eliminated (a bare identifier would throw ReferenceError at
+  // module top-level in the packaged app).
+  define: { __HERMES_WEB__: mode === 'web' ? 'true' : 'false' },
   plugins: [react(), babel({ presets: [compilerPreset()] }), tailwindcss(), emojibaseAssets()],
   css: {
     // Pin an explicit (empty) PostCSS config. Tailwind is handled entirely by
@@ -132,6 +138,8 @@ export default defineConfig(({ command }) => ({
     // Validate the packaged generation with metadata checks at launch, without
     // reading every lazy vendor chunk (and triggering on-access AV scans).
     manifest: 'renderer-manifest.json',
+    // web bundle (dist-web/) is served by the dashboard's /app mount; Electron keeps dist/.
+    outDir: mode === 'web' ? 'dist-web' : 'dist',
     // The renderer intentionally ships FEW chunks (not one, not thousands):
     //   · `codeSplitting: false` (the old setup) inlines every `lazy()` /
     //     dynamic import into the entry, so heavyweight lazy-only deps
