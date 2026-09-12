@@ -3009,6 +3009,47 @@ describe('usePromptActions file attachment sync', () => {
     expect(uploaded.path).toBe('/root/tmp/photo.jpg')
   })
 
+  it('sends browser-picked files as data_url with NO path (virtual paths are gateway-invisible)', async () => {
+    const readFileDataUrl = vi.fn(async () => 'data:text/plain;base64,aGVsbG8=')
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: { readFileDataUrl }
+    })
+
+    const requestGateway = vi.fn(async (method: string, _params?: unknown) => {
+      if (method === 'file.attach') {
+        return { attached: true, ref_text: '@file:notes.txt' } as never
+      }
+
+      return {} as never
+    })
+
+    const virtualPath = '/__webfs__/1/notes.txt'
+
+    const uploaded = await uploadComposerAttachment(
+      {
+        id: 'file:notes.txt',
+        kind: 'file',
+        label: 'notes.txt',
+        path: virtualPath,
+        refText: '@file:notes.txt'
+      },
+      {
+        remote: true,
+        requestGateway,
+        sessionId: RUNTIME_SESSION_ID
+      }
+    )
+
+    expect(readFileDataUrl).toHaveBeenCalledWith(virtualPath)
+    const attachCall = requestGateway.mock.calls.find(([method]) => method === 'file.attach')
+    expect(attachCall).toBeDefined()
+    const params = (attachCall?.[1] ?? {}) as Record<string, unknown>
+    expect(params).toMatchObject({ name: 'notes.txt', session_id: RUNTIME_SESSION_ID, data_url: 'data:text/plain;base64,aGVsbG8=' })
+    expect(params).not.toHaveProperty('path')
+    expect(uploaded.refText).toBe('@file:notes.txt')
+  })
+
   it('merges image staging into the current occurrence without dropping its thumbnail', async () => {
     $connection.set({ mode: 'local' } as never)
     $currentCwd.set('/root')
