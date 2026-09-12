@@ -64,6 +64,43 @@ describe('classifyEdgeSwipe', () => {
     })
   })
 
+  describe('right-side mirror (side: right)', () => {
+    it('closes an open right drawer on an outward (rightward) swipe', () => {
+      expect(classifyEdgeSwipe({ dx: 200, dy: 3, startX: 300, open: true, side: 'right', width: 390 })).toBe('close')
+    })
+
+    it('closes at exactly the minimum travel', () => {
+      expect(classifyEdgeSwipe({ dx: EDGE_SWIPE_MIN_DX_PX, dy: 0, startX: 300, open: true, side: 'right', width: 390 })).toBe('close')
+    })
+
+    it('ignores an inward (leftward) swipe while the right drawer is open', () => {
+      expect(classifyEdgeSwipe({ dx: -200, dy: 0, startX: 300, open: true, side: 'right', width: 390 })).toBeNull()
+    })
+
+    it('opens on a leftward swipe from the right edge band', () => {
+      expect(classifyEdgeSwipe({ dx: -200, dy: 5, startX: 380, open: false, side: 'right', width: 390 })).toBe('open')
+      expect(classifyEdgeSwipe({ dx: -200, dy: 5, startX: 390 - EDGE_SWIPE_START_MAX_X_PX, open: false, side: 'right', width: 390 })).toBe('open')
+    })
+
+    it('rejects a start one pixel inside the right edge band', () => {
+      expect(
+        classifyEdgeSwipe({ dx: -200, dy: 0, startX: 390 - EDGE_SWIPE_START_MAX_X_PX - 1, open: false, side: 'right', width: 390 })
+      ).toBeNull()
+    })
+
+    it('requires the viewport width to resolve the right edge band', () => {
+      expect(classifyEdgeSwipe({ dx: -200, dy: 0, startX: 380, open: false, side: 'right' })).toBeNull()
+    })
+
+    it('rejects a rightward swipe from the right edge', () => {
+      expect(classifyEdgeSwipe({ dx: 200, dy: 0, startX: 385, open: false, side: 'right', width: 390 })).toBeNull()
+    })
+
+    it('dy abstain still holds for the mirrored side', () => {
+      expect(classifyEdgeSwipe({ dx: 200, dy: EDGE_SWIPE_MAX_ABS_DY_PX + 1, startX: 300, open: true, side: 'right', width: 390 })).toBeNull()
+    })
+  })
+
   it('keeps thresholds on the contract the hook depends on', () => {
     expect(EDGE_SWIPE_START_MAX_X_PX).toBe(24)
     expect(EDGE_SWIPE_MIN_DX_PX).toBe(60)

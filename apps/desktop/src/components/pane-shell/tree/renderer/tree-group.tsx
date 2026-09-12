@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/pane-tab'
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
 import { useKeybindHint } from '@/lib/keybinds/use-keybind-hint'
 import { cn } from '@/lib/utils'
@@ -256,6 +257,10 @@ export function TreeGroup({
 
   const hiddenPanes = useStore($hiddenTreePanes)
   const narrow = useStore($narrowViewport)
+  // Coarse pointers get a ≥44px collapse affordance in the zone header for
+  // tool-panel zones (terminal): the 20px chevron is unreachable by thumb,
+  // and on narrow the terminal zone is the grid strip the user cannot close.
+  const coarse = useMediaQuery('(pointer: coarse)')
   const workspaceMode = useStore($workspaceMode)
   const workspaceOwnerKey = useStore($workspaceOwnerKey)
   const newSessionTabAction = useStore($newSessionTabAction)
@@ -520,6 +525,18 @@ export function TreeGroup({
             style={{ cursor: 'grab' }}
             trailing={
               <>
+                {coarse && isCollapsePane(activeId) && !node.minimized && (
+                  <button
+                    aria-label={t.common.close}
+                    className="mr-1 grid size-11 shrink-0 place-items-center self-center rounded-md text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+                    data-zone-collapse={activeId}
+                    onClick={() => collapseTreePane(activeId)}
+                    onPointerDown={e => e.stopPropagation()}
+                    type="button"
+                  >
+                    <Codicon name="close" size="1rem" />
+                  </button>
+                )}
                 {minimizable && (
                   <button
                     aria-label={node.minimized ? t.zones.restore : t.zones.minimize}
