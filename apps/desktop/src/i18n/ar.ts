@@ -3345,6 +3345,10 @@ export const ar = defineLocale({
       title: 'الشريط الجانبي',
       description: 'تنقل التطبيق',
       toggle: open => `${open ? 'إظهار' : 'إخفاء'} الشريط الجانبي`
+    },
+    webUpdate: {
+      available: 'يتوفر إصدار جديد',
+      refresh: 'اضغط للتحديث'
     }
   }
 })

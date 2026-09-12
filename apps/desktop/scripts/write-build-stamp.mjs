@@ -159,7 +159,18 @@ function main() {
   }
 
   mkdirSync(OUT_DIR, { recursive: true })
-  writeFileSync(OUT_FILE, JSON.stringify(payload, null, 2) + "\n", "utf8")
+  writeFileSync(OUT_FILE, JSON.stringify(payload, null, 2) + "\n", "utf-8")
+
+  // Web side of the stamp: vite's publicDir copies this file into outDir
+  // AFTER the (default) emptyOutDir wipe, so it survives every build; vite
+  // also reads it to embed __HERMES_BUILD_STAMP__ (vite.config.ts) — the
+  // file and the define must come from THIS one write to compare equal.
+  // Electron builds copy it into dist/ too (inert there, no consumer).
+  const webPayload = { ...payload, buildId: `${payload.commit}+${payload.builtAt}` }
+  const WEB_DIR = join(DESKTOP_ROOT, "public")
+  const WEB_FILE = join(WEB_DIR, "build-stamp.json")
+  mkdirSync(WEB_DIR, { recursive: true })
+  writeFileSync(WEB_FILE, JSON.stringify(webPayload, null, 2) + "\n", "utf-8")
   console.log(
     "[write-build-stamp] wrote " +
       relative(REPO_ROOT, OUT_FILE) +
