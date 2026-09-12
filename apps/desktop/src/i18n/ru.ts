@@ -3792,6 +3792,10 @@ export const ru = defineLocale({
       title: 'Боковая панель',
       description: 'Показывает мобильную боковую панель.',
       toggle: open => `${open ? 'Показать' : 'Скрыть'} боковую панель`
+    },
+    webUpdate: {
+      available: 'Доступна новая версия',
+      refresh: 'Нажмите, чтобы обновить'
     }
   }
 })

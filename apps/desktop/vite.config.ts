@@ -28,6 +28,22 @@ const real = (p: string): string | null => {
   }
 }
 
+/** Embed the web build stamp (__HERMES_BUILD_STAMP__) from the file
+ *  scripts/write-build-stamp.mjs wrote (it runs first in both build chains).
+ *  Reading the FILE — not re-resolving git here — guarantees the embedded
+ *  constant and the served build-stamp.json compare equal. Empty string when
+ *  the file is absent (direct `vite build`), which disables the check. */
+function webBuildStampDefine(): string {
+  try {
+    const raw = fs.readFileSync(path.resolve(__dirname, 'public/build-stamp.json'), 'utf-8')
+    const id = JSON.parse(raw).buildId
+
+    return typeof id === 'string' && id.length > 0 ? JSON.stringify(id) : '""'
+  } catch {
+    return '""'
+  }
+}
+
 const fsAllow = [
   ...new Set(
     [
@@ -108,7 +124,12 @@ export default defineConfig(({ command, mode }) => ({
   // the `'false'` replacement so the web-bridge install branch becomes `if (false)`
   // and is dead-code-eliminated (a bare identifier would throw ReferenceError at
   // module top-level in the packaged app).
-  define: { __HERMES_WEB__: mode === 'web' ? 'true' : 'false' },
+  define: {
+    __HERMES_WEB__: mode === 'web' ? 'true' : 'false',
+    // Defined in BOTH modes (a bare identifier would throw in the Electron
+    // bundle); the web-update module gates on __HERMES_WEB__ itself.
+    __HERMES_BUILD_STAMP__: webBuildStampDefine()
+  },
   plugins: [react(), babel({ presets: [compilerPreset()] }), tailwindcss(), emojibaseAssets()],
   css: {
     // Pin an explicit (empty) PostCSS config. Tailwind is handled entirely by

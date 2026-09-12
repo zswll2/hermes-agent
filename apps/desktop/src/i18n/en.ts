@@ -3850,6 +3850,10 @@ export const en: Translations = {
       title: 'Sidebar',
       description: 'Displays the mobile sidebar.',
       toggle: open => `${open ? 'Show' : 'Hide'} sidebar`
+    },
+    webUpdate: {
+      available: 'A new version is available',
+      refresh: 'Tap to refresh'
     }
   }
 }

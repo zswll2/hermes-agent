@@ -19,7 +19,7 @@ import './store/user-bubble-transparency'
 import '@/debug/dev-only'
 
 import { QueryClientProvider } from '@tanstack/react-query'
-import { StrictMode } from 'react'
+import { StrictMode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router'
 
@@ -27,14 +27,18 @@ import App from './app'
 import { RootErrorBoundary } from './components/error-boundary'
 import { HapticsProvider } from './components/haptics-provider'
 import { RootTooltipProvider } from './components/ui/tooltip'
-import { I18nProvider } from './i18n'
+import { I18nProvider, useI18n } from './i18n'
 import { installClipboardShim } from './lib/clipboard'
 import { queryClient } from './lib/query-client'
 import { installRendererAnimationPauseState } from './lib/renderer-loop-pause'
 import { installSelectionCopyColorGuard } from './lib/selection-copy-colors'
+import { installWebUpdateCheck, setWebUpdateCopy } from './lib/web-update'
 import { ThemeProvider } from './themes/context'
 
 installClipboardShim()
+// Web-build only: build-stamp self-compare + resume auto-reload (no-op in
+// the Electron build via __HERMES_WEB__).
+installWebUpdateCheck()
 // Chromium serializes selection copies (Cmd+C, right-click Copy) with the
 // theme's computed colors inlined; without this guard a dark-theme selection
 // pastes as near-white text into light-background targets.
@@ -90,6 +94,9 @@ if (winParam === 'overlay') {
                     Disabling transitions makes navigate() commit at default priority. */}
                   <HashRouter useTransitions={false}>
                     <App />
+                    {/* The web-update fallback pill renders outside React;
+                        this feeds it the translated copy once i18n is up. */}
+                    <WebUpdateCopy />
                   </HashRouter>
                 </RootTooltipProvider>
               </HapticsProvider>
@@ -99,4 +106,14 @@ if (winParam === 'overlay') {
       </RootErrorBoundary>
     </StrictMode>
   )
+}
+
+function WebUpdateCopy() {
+  const { t } = useI18n()
+
+  useEffect(() => {
+    setWebUpdateCopy(`${t.ui.webUpdate.available} · ${t.ui.webUpdate.refresh}`)
+  }, [t])
+
+  return null
 }

@@ -3978,6 +3978,10 @@ export const zh: Translations = {
       title: '侧边栏',
       description: '显示移动端侧边栏。',
       toggle: open => `${open ? '显示' : '隐藏'}侧边栏`
+    },
+    webUpdate: {
+      available: '有新版本',
+      refresh: '点此刷新'
     }
   }
 }

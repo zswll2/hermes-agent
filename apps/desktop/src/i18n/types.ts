@@ -3312,5 +3312,9 @@ export interface Translations {
       description: string
       toggle: (open: boolean) => string
     }
+    webUpdate: {
+      available: string
+      refresh: string
+    }
   }
 }

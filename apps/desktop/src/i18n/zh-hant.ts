@@ -3305,6 +3305,10 @@ export const zhHant = defineLocale({
       title: '側邊欄',
       description: '顯示行動裝置側邊欄。',
       toggle: open => `${open ? '顯示' : '隱藏'}側邊欄`
+    },
+    webUpdate: {
+      available: '有新版本',
+      refresh: '點此重新整理'
     }
   }
 })

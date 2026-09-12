@@ -3444,6 +3444,10 @@ export const ja = defineLocale({
       title: 'サイドバー',
       description: 'モバイルサイドバーを表示します。',
       toggle: open => `サイドバーを${open ? '表示' : '非表示'}`
+    },
+    webUpdate: {
+      available: '新しいバージョンがあります',
+      refresh: 'タップして更新'
     }
   }
 })
