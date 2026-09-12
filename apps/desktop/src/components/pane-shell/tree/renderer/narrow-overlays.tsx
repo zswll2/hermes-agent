@@ -80,7 +80,11 @@ export function NarrowOverlays() {
       }
 
       // `open`/`close` are explicit intents (programmatic reveal, titlebar show);
-      // `toggle` (default) is the ⌘B/⌘G flip.
+      // `toggle` (default) is the ⌘B/⌘G flip. `close` is side-scoped, not
+      // tab-scoped: the sessions zone's drawer may be showing ANY of its
+      // stacked panes (SESSIONS | BOTS strip), and closing "the left sidebar"
+      // must dismiss that drawer whichever tab is active — a row selection
+      // fires it without knowing which pane fronts the strip.
       const mode = detail?.mode ?? 'toggle'
       setReveal(current => {
         if (mode === 'open') {
@@ -88,7 +92,17 @@ export function NarrowOverlays() {
         }
 
         if (mode === 'close') {
-          return current?.id === match.id ? null : current
+          if (!current) {
+            return current
+          }
+
+          if (current.id === match.id) {
+            return null
+          }
+
+          const currentPane = collapsiblesRef.current.find(p => p.id === current.id)
+
+          return currentPane && sideOf(currentPane) === sideOf(match) ? null : current
         }
 
         return current?.id === match.id && current.pinned ? null : { id: match.id, pinned: true }

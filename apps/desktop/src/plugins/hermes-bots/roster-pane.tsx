@@ -12,6 +12,7 @@ import {
   Button,
   cn,
   Codicon,
+  closeNarrowSidebarDrawer,
   ConfirmDialog,
   DisclosureCaret,
   DropdownMenu,
@@ -574,7 +575,10 @@ export function BotsPane() {
       members={row.members}
       needsYou={Boolean(groupNeedsYou[row.name])}
       onDisband={setDeletingGroup}
-      onOpen={openGroupChat}
+      onOpen={group => {
+        openGroupChat(group)
+        closeNarrowSidebarDrawer()
+      }}
     />
   )
 

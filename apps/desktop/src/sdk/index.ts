@@ -1618,6 +1618,11 @@ export { Contribute, type ContributeProps } from '@/contrib/react/contribute'
 // -- contracts ----------------------------------------------------------------
 
 export type { Contribution } from '@/contrib/types'
+/** Dismiss the left drawer's narrow reveal after an explicit selection (a
+ *  session / bot / group row click). No-op above the sidebar-collapse
+ *  breakpoint — a plugin row may call it unconditionally; the desktop's
+ *  docked sidebar is never collapsed by selection. */
+export { closeNarrowSidebarDrawer } from '@/store/layout'
 /** The live gateway instance type — for typing the `gateway` prop `McpTab`
  *  takes; obtain the instance from `host.getGateway()`. */
 export type { HermesGateway } from '@/hermes'

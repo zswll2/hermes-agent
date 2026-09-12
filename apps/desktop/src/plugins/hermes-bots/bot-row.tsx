@@ -7,6 +7,7 @@
  */
 
 import {
+  closeNarrowSidebarDrawer,
   cn,
   coarseElapsed,
   Codicon,
@@ -210,8 +211,13 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
   }
 
   // Rows and Active Now share the exact-owner open path; only that path may
-  // activate a source and resolve the canonical Bot Chat.
-  const open = () => void openRosterBot(bot)
+  // activate a source and resolve the canonical Bot Chat. The narrow drawer
+  // folds right after (a failed open surfaces its own notification, so the
+  // close is never silent) — the desktop docked rail is untouched.
+  const open = () => {
+    void openRosterBot(bot)
+    closeNarrowSidebarDrawer()
+  }
 
   // DRAG lives on the row button itself: it already takes pointer events, so
   // the click that opens the bot and the drag that files it are one element's

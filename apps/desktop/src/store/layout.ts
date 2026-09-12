@@ -516,6 +516,16 @@ export function setSidebarOpen(open: boolean) {
   revealNarrowPane(CHAT_SIDEBAR_PANE_ID, open ? 'open' : 'close')
 }
 
+/**
+ * Dismiss the left drawer's narrow reveal after an explicit selection (a
+ * session / bot / group row). Narrow-only by construction — revealNarrowPane
+ * no-ops above the collapse breakpoint, so the docked sidebar a desktop user
+ * keeps open is never touched.
+ */
+export function closeNarrowSidebarDrawer() {
+  revealNarrowPane(CHAT_SIDEBAR_PANE_ID, 'close')
+}
+
 export function toggleSidebarOpen() {
   if (!revealNarrowPane(CHAT_SIDEBAR_PANE_ID, 'toggle')) {
     togglePane(CHAT_SIDEBAR_PANE_ID)
