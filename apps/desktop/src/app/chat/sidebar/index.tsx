@@ -1,5 +1,3 @@
-import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -24,6 +22,7 @@ import {
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { searchSessions, type SessionInfo, type SessionSearchResult } from '@/hermes'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
 import { comboTokens } from '@/lib/keybinds/combo'
 import { resolveProfileColor } from '@/lib/profile-color'
@@ -175,6 +174,7 @@ import {
   useRepoWorktreeMap
 } from './projects'
 import { WorktreeDialog } from './projects/worktree-dialog'
+import { sidebarReorderSensors } from './reorder-sensors'
 import {
   SidebarBlankState,
   SidebarLoadErrorState,
@@ -506,10 +506,9 @@ export function ChatSidebar({
 
   const activeSidebarSessionId = currentView === 'chat' ? selectedSessionId : null
 
-  const dndSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
+  // Why per-pointer sensors: reorder-sensors.ts (touch long-press vs scroll).
+  const coarsePointer = useMediaQuery('(pointer: coarse)')
+  const dndSensors = useMemo(() => sidebarReorderSensors(coarsePointer ? 'coarse' : 'fine'), [coarsePointer])
 
   // Profile scope = the "workspace switcher" context. Concrete scope shows only
   // that profile's sessions (clean rows, no per-row tags); ALL fans every

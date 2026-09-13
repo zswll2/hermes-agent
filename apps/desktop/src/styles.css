@@ -3607,6 +3607,18 @@ html {
     font-size: max(16px, 1em);
     touch-action: manipulation;
   }
+
+  /* Reorderable sidebar rows (any list whose rows carry a grab handle): the
+     browser owns vertical pans, so a quick swipe scrolls instead of arming the
+     long-press drag, and the deliberate long-press must not summon iOS's
+     native callout/selection loupe over the row it lifts. Unlayered on
+     purpose — it must beat the `button { touch-action: manipulation }` above,
+     which Tailwind utilities (always @layer'd) cannot. */
+  button:has([data-reorder-handle]) {
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
 }
 
 /* Keep transcript scrolling contained: no whole-page rubber-banding past the

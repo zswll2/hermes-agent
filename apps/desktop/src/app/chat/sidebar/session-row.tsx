@@ -352,6 +352,9 @@ function SidebarSessionRowImpl({
         actions={card ? undefined : actionsNode}
         className={cn(
           'group row-hover relative',
+          // Touch pans/callout suppression for reorderable rows live in
+          // styles.css (`button:has([data-reorder-handle])`) — Tailwind
+          // utilities are @layer'd and lose to the unlayered `button` rule.
           card && SIDEBAR_ROW_CARD_MIN_H,
           // Density-aware minimum heights for the inline (non-card) row: the
           // metadata / preview lines below need the extra rows (#68119).
