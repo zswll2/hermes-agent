@@ -3573,6 +3573,35 @@ html {
   font-size: max(1rem, 16px);
 }
 
+/* Zoom policy for touch (no fake disable): iOS ≥10 ignores
+   user-scalable=no, so we never add it. Instead, coarse pointers kill the
+   300ms double-tap delay on interactive + scroll surfaces
+   (touch-action: manipulation keeps pan AND pinch) and hold EVERY typing
+   surface at ≥16px so focusing one never auto-zooms the page. Fine pointers
+   are outside the media query — desktop computed styles stay untouched. */
+@media (pointer: coarse) {
+  a,
+  [role='tab'],
+  summary,
+  label {
+    touch-action: manipulation;
+  }
+
+  [data-chat-surface],
+  [data-narrow-drawer],
+  [data-overlay-surface] {
+    touch-action: manipulation;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable='true'] {
+    font-size: max(16px, 1em);
+    touch-action: manipulation;
+  }
+}
+
 /* Keep transcript scrolling contained: no whole-page rubber-banding past the
    thread, and no double-tap-zoom delay on interactive controls. */
 [data-chat-surface] {
