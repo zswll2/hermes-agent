@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createWebBridge, WebApiAuthError, WebApiError, WebBridgeCapabilityError } from './web-bridge'
+import { createWebBridge, degradationLogLevel, WebApiAuthError, WebApiError, WebBridgeCapabilityError } from './web-bridge'
 import { isWebVirtualPath, registerWebFile, resetWebFileRegistry, WEB_FS_ROOT } from './web-file-registry'
 
 import { getBridge } from './index'
@@ -292,6 +292,30 @@ describe('web-bridge degraded members', () => {
   it('openExternal refuses non-http(s) schemes', async () => {
     const bridge = createWebBridge()
     await expect(bridge.openExternal('file:///etc/passwd')).rejects.toBeInstanceOf(WebBridgeCapabilityError)
+  })
+
+  it('expected-missing channels log at debug, not warn, and only once (web build)', async () => {
+    // getPoolLimits is untouched by the other tests, so the module-level
+    // once-set is guaranteed empty for it regardless of test order.
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bridge = createWebBridge()
+
+    await expect(bridge.getPoolLimits()).rejects.toBeInstanceOf(WebBridgeCapabilityError)
+    await expect(bridge.getPoolLimits()).rejects.toBeInstanceOf(WebBridgeCapabilityError)
+
+    // vitest defines __HERMES_WEB__ = true, matching the real web build.
+    expect(debug).toHaveBeenCalledTimes(1)
+    expect(debug).toHaveBeenCalledWith('[web-bridge] unavailable:', 'getPoolLimits')
+    expect(warn).not.toHaveBeenCalled()
+
+    debug.mockRestore()
+    warn.mockRestore()
+  })
+
+  it('degradationLogLevel: web builds debug, hosts that should be complete warn', () => {
+    expect(degradationLogLevel(true)).toBe('debug')
+    expect(degradationLogLevel(false)).toBe('warn')
   })
 })
 
