@@ -115,7 +115,12 @@ export function PageSearchShell({
         )}
         {filters ? <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-2">{filters}</div> : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)">{children}</div>
+      {/* data-page-body: hooks the coarse-pointer bottom safe-area inset in
+          styles.css — this is the scrollport whose last rows run flush to the
+          viewport bottom on phones (home indicator collision). */}
+      <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)" data-page-body="">
+        {children}
+      </div>
     </section>
   )
 }

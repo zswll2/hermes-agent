@@ -3631,6 +3631,20 @@ button,
   animation: narrow-drawer-in-right 160ms ease-out;
 }
 
+/* Touch bottom inset for the drawers and full-page capability surfaces
+   (skills/messaging/artifacts): their scrollable rows otherwise run flush to
+   the viewport bottom, colliding with the iPhone home indicator
+   (env(safe-area-inset-bottom) ≈ 34px) and leaving no thumb room. Coarse
+   pointers ONLY — the top inset above is a different concern (notch) handled
+   by the shell root; on fine pointers every computed style stays exactly as
+   before, so desktop layout is untouched. */
+@media (pointer: coarse) {
+  [data-narrow-drawer],
+  [data-page-body] {
+    padding-bottom: calc(var(--safe-bottom, 0px) + 12px);
+  }
+}
+
 @keyframes narrow-drawer-in-left {
   from {
     opacity: 0.6;
