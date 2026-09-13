@@ -55,22 +55,34 @@ const SESSION_HEADER = 'X-Hermes-Session-Token'
 
 const warned = new Set<string>()
 
-function warnOnce(capability: string): void {
+/** Where the once-per-capability degradation notice goes: web builds EXPECT
+ *  every `unavailable()` channel to be missing (no Electron main behind the
+ *  page), so a dozen startup `warn`s there drowned real console noise during
+ *  mobile acceptance — `debug` keeps it retrievable without the noise. Hosts
+ *  where the bridge SHOULD be complete (tests simulating Electron, future
+ *  embedders) keep the `warn`. Pure so both sides are unit-testable. */
+export function degradationLogLevel(webBuild: boolean): 'debug' | 'warn' {
+  return webBuild ? 'debug' : 'warn'
+}
+
+function logOnce(capability: string): void {
   if (warned.has(capability)) {return}
   warned.add(capability)
-   
-  console.warn('[web-bridge] unavailable:', capability)
+
+  console[degradationLogLevel(__HERMES_WEB__)]('[web-bridge] unavailable:', capability)
 }
 
 /**
  * Structured degradation for a required bridge member the browser cannot
- * offer. Rejects with `WebBridgeCapabilityError` on first use (and warns once
- * per capability) so misrouted calls are visible in the console during
- * acceptance instead of failing as silent `undefined`.
+ * offer. Rejects with `WebBridgeCapabilityError` on first use and logs once
+ * per capability at the level `degradationLogLevel` picks — `debug` in web
+ * builds (expected-missing channels must not bury real warnings), `warn`
+ * where the member should exist. Rejection semantics are identical either
+ * way; only visibility changes.
  */
 function unavailable(capability: string): (...args: unknown[]) => Promise<never> {
   return (...args: unknown[]) => {
-    warnOnce(capability)
+    logOnce(capability)
 
     return Promise.reject(new WebBridgeCapabilityError(capability))
   }
@@ -259,7 +271,7 @@ function sharedPickerInput(accept: string, multiple: boolean): HTMLInputElement 
 
 async function webSelectPaths(options?: HermesSelectPathsOptions): Promise<string[]> {
   if (options?.directories) {
-    warnOnce('selectPaths.directories')
+    logOnce('selectPaths.directories')
 
     return Promise.reject(new WebBridgeCapabilityError('selectPaths.directories'))
   }
@@ -299,7 +311,7 @@ async function webSaveImageBuffer(
 
 async function webReadClipboard(): Promise<string> {
   if (!navigator.clipboard) {
-    warnOnce('readClipboard')
+    logOnce('readClipboard')
 
     return Promise.reject(new WebBridgeCapabilityError('readClipboard'))
   }
@@ -309,7 +321,7 @@ async function webReadClipboard(): Promise<string> {
 
 async function webWriteClipboard(text: string): Promise<boolean> {
   if (!navigator.clipboard) {
-    warnOnce('writeClipboard')
+    logOnce('writeClipboard')
 
     return Promise.reject(new WebBridgeCapabilityError('writeClipboard'))
   }
@@ -321,7 +333,7 @@ async function webWriteClipboard(text: string): Promise<boolean> {
 
 async function webOpenExternal(url: string): Promise<void> {
   if (!/^https?:\/\//i.test(url)) {
-    warnOnce('openExternal')
+    logOnce('openExternal')
 
     return Promise.reject(new WebBridgeCapabilityError(`openExternal(${url})`))
   }
