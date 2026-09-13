@@ -1,7 +1,9 @@
 import type { useSensors } from '@dnd-kit/core'
-import { closestCenter, DndContext, type DragEndEvent } from '@dnd-kit/core'
+import { closestCenter, DndContext, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type * as React from 'react'
+
+import { triggerHaptic } from '@/lib/haptics'
 
 // Sidebar reordering is a strictly vertical list. The dragged item's transform
 // is rendered Y-only in useSortableBindings (no x, no scale); this just stops
@@ -26,6 +28,16 @@ export function ReorderableList({
   onReorder: (ids: string[]) => void
   sensors?: ReturnType<typeof useSensors>
 }) {
+  const handleDragStart = ({ activatorEvent }: DragStartEvent) => {
+    // Touch reordering activates after a deliberate long-press (400ms) —
+    // confirm it took with a tap haptic. Pointer/keyboard drags activate
+    // immediately and don't need the ping. triggerHaptic's own gesture gate
+    // and rate limit apply unchanged. (TouchEvent is undefined in jsdom.)
+    if (typeof TouchEvent !== 'undefined' && activatorEvent instanceof TouchEvent) {
+      triggerHaptic('open')
+    }
+  }
+
   const handleDragEnd = ({ activatorEvent, active, over }: DragEndEvent) => {
     // dnd-kit only restores focus for keyboard drags; after a pointer drop the
     // browser leaves :focus on the grab handle, which keeps a focus-within
@@ -52,6 +64,7 @@ export function ReorderableList({
       autoScroll={reorderAutoScroll}
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
+      onDragStart={handleDragStart}
       sensors={sensors}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
