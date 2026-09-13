@@ -21,6 +21,7 @@ import {
   isPaneVisible,
   markCollapsePane,
   mirrorLayoutTree,
+  $narrowRevealActive,
   paneRootSide,
   registerLayoutResetHandler,
   registerPaneCloser,
@@ -41,6 +42,7 @@ import { Slot } from '@/contrib/react/slot'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { registry } from '@/contrib/registry'
 import { discoverRuntimePlugins } from '@/contrib/runtime-loader'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { translateNow } from '@/i18n'
 import { NEW_SESSION_TITLE, sessionTitle as storedSessionTitle } from '@/lib/chat-runtime'
 import { Download, FileText, LayoutDashboard, PanelBottom, PanelTop, Terminal, Upload, Zap } from '@/lib/icons'
@@ -823,6 +825,14 @@ function TitlebarSlot({ area, className, style }: TitlebarSlotProps) {
 export function ContribController() {
   const sidebarOpen = useStore($sidebarOpen)
   const statusbarVisible = useStore($statusbarVisible)
+  const narrowReveal = useStore($narrowRevealActive)
+  const coarse = useMediaQuery('(pointer: coarse)')
+
+  // A coarse reveal makes the in-flow statusbar fight the drawer for the
+  // bottom edge: unmount it for the reveal's lifetime (same unmount semantics
+  // as the toggle-off path) and let the data-narrow-reveal stamp align the
+  // composer dock with the drawer's content inset (styles.css).
+  const suspendStatusbar = narrowReveal && coarse
 
   // HUD mode is the SAME app with its frame removed: the wiring (gateway,
   // sessions, streams, submit) mounts identically, and only the shell around
@@ -856,6 +866,7 @@ export function ContribController() {
         <AppContextMenu />
         <div
           className="flex h-screen min-h-0 w-screen flex-col bg-(--ui-bg-chrome) text-(--ui-text-primary)"
+          data-narrow-reveal={narrowReveal ? '' : undefined}
           // Window-glass hook: this div and the sidebar-wrapper above it are
           // the app shell's two full-window opaque painters; the
           // [data-hermes-glass] rules in styles.css clear them so the tint
@@ -922,8 +933,9 @@ export function ContribController() {
           {/* The REAL statusbar (model pill, command center, agents, …) with
               statusBar.left/right contributions merged in. Unmounted — not
               just hidden — while toggled off, so its 15s status poll and the
-              per-turn readouts stop with it. */}
-          {statusbarVisible && <WiredPane part="statusbar" />}
+              per-turn readouts stop with it. Also unmounted for the duration
+              of a coarse-pointer narrow reveal (see suspendStatusbar). */}
+          {statusbarVisible && !suspendStatusbar && <WiredPane part="statusbar" />}
         </div>
       </ContribWiring>
     </SidebarProvider>

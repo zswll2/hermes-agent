@@ -6,6 +6,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
+import { $narrowRevealActive } from '@/components/pane-shell/tree/store'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { AlertCircle, AlertTriangle, CheckCircle2, type IconComponent, Info } from '@/lib/icons'
@@ -51,6 +53,8 @@ export function NotificationStack() {
   const lastNotificationIdRef = useRef<string | null>(null)
   const [expanded, setExpanded] = useState(false)
   const copy = t.notifications
+  const coarse = useMediaQuery('(pointer: coarse)')
+  const narrowReveal = useStore($narrowRevealActive)
 
   useEffect(() => {
     if (defaultStack.length <= 1) {
@@ -77,9 +81,15 @@ export function NotificationStack() {
     }
   }, [notifications])
 
+  // The top-center banner is fixed above the over-modal rung, so on a phone it
+  // paints over a revealed narrow drawer's first rows. Suspend it for the
+  // reveal's lifetime instead: the store (counts, dismiss timers) is untouched,
+  // and closing the drawer brings the banner back exactly as it was.
+  const topCenterSuspended = coarse && narrowReveal
+
   return (
     <>
-      {defaultStack.length > 0 && (
+      {defaultStack.length > 0 && !topCenterSuspended && (
         <TopCenterStack
           copy={copy}
           expanded={expanded}

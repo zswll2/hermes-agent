@@ -1134,6 +1134,13 @@ export const $narrowViewport = atom(Boolean(narrowQuery?.matches))
 
 narrowQuery?.addEventListener('change', event => $narrowViewport.set(event.matches))
 
+/**
+ * NarrowOverlays' reveal state mirrored for chrome outside the tree (top-center
+ * toasts, statusbar): consumers gate on this AND `(pointer: coarse)`, so fine
+ * pointers never change behavior.
+ */
+export const $narrowRevealActive = atom(false)
+
 /** The titlebar flip toggle (⌘\): mirror the whole layout left↔right. */
 export function mirrorLayoutTree() {
   const tree = $layoutTree.get()

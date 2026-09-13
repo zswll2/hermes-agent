@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils'
 
 import { PANE_TOGGLE_REVEAL_EVENT } from '../..'
 import { allPaneIds, findGroupOfPane } from '../model'
-import { $hiddenTreePanes, $layoutTree, $narrowViewport, revealTreePane } from '../store'
+import { $hiddenTreePanes, $layoutTree, $narrowRevealActive, $narrowViewport, revealTreePane } from '../store'
 
 import { paneChrome } from './track-model'
 
@@ -45,6 +45,14 @@ export function NarrowOverlays() {
   // overlay only when it's the top layer (never under a dialog / edit mode).
   const revealActive = reveal !== null
   useEffect(() => (revealActive ? pushEscapeLayer(ESCAPE_PRIORITY.narrowOverlay) : undefined), [revealActive])
+
+  // Cleanup matters: leaving the DOM with a reveal still open (tree → null)
+  // must not strand a stale `true` for outside-tree chrome.
+  useEffect(() => {
+    $narrowRevealActive.set(revealActive)
+
+    return () => $narrowRevealActive.set(false)
+  }, [revealActive])
 
   const inTree = useMemo(() => new Set(tree ? allPaneIds(tree) : []), [tree])
 

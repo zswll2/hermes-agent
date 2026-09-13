@@ -3539,6 +3539,13 @@ html:has([data-hud-shell]) [data-slot='popover-content'] {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --keyboard-inset: 0px;
+  /* The single bottom-baseline alignment value for touch: what coarse drawers
+     ([data-narrow-drawer]) and full-page bodies pad their scroll content by,
+     AND what the composer dock lifts itself by while a narrow reveal is
+     active (see the reveal rule below) — so the drawer's last row and the
+     dock's bottom edge share one baseline instead of two. Fine pointers and
+     reveal-inactive coarse layouts compute nothing from it. */
+  --drawer-bottom-align: calc(var(--safe-bottom, 0px) + 12px);
   /* Coarse pointers add this much clearance below the in-flow titlebar for
      the transcript's first bubble (thread/list.tsx top pad). Same arithmetic
      as the zone-strip margin below (cluster bottom 49 + 8 breathing room −
@@ -3641,7 +3648,15 @@ button,
 @media (pointer: coarse) {
   [data-narrow-drawer],
   [data-page-body] {
-    padding-bottom: calc(var(--safe-bottom, 0px) + 12px);
+    padding-bottom: var(--drawer-bottom-align);
+  }
+
+  /* While a narrow drawer reveal is active, the dock adopts the SAME bottom
+     baseline the drawer's content is inset by, so the drawer's last row and
+     the dock's bottom edge stop fighting over the bottom edge. Scoped to the
+     reveal: coarse layouts without an open drawer are pixel-identical. */
+  [data-narrow-reveal] [data-slot='composer-dock']:not([data-popped-out]) {
+    bottom: var(--drawer-bottom-align);
   }
 }
 
