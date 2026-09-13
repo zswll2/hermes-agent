@@ -1,11 +1,11 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import { registry } from '@/contrib/registry'
 import { stubResizeObserver } from '@/test/jsdom'
 
-import { group, split } from '../model'
+import { allPaneIds, group, split } from '../model'
 import { $hiddenTreePanes, $layoutTree, $narrowViewport, declareDefaultTree } from '../store'
 
 import { NarrowOverlays } from './narrow-overlays'
@@ -122,5 +122,84 @@ describe('narrow overlay of a stacked zone', () => {
     })
 
     expect(getByTestId('files-body')).toBeTruthy()
+  })
+
+  // r7 N3 regression: the titlebar's show-right-sidebar press routes here with
+  // the pane-state ALIAS while the files pane sits outside `collapsibles` —
+  // hidden (the right rail boots closed, so its binding hid the pane at every
+  // phone's first paint) or dismissed out of the tree. The press must HEAL the
+  // pane and open the drawer anyway, not silently no-op (which is what r6's
+  // "zero-code" M3 verdict missed).
+  describe('a toggle naming a pane outside collapsibles', () => {
+    const coarseMedia = () => {
+      const mql = { addEventListener: vi.fn(), matches: true, removeEventListener: vi.fn() }
+
+      vi.stubGlobal('matchMedia', vi.fn().mockReturnValue(mql))
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    const registerFiles = () =>
+      registerPane(
+        'files',
+        'files',
+        { collapsible: true, placement: 'right', revealAliases: ['file-browser'], width: '200px' },
+        'file rail'
+      )
+
+    it('heals a chrome-hidden pane and still opens the drawer with backdrop and close button', () => {
+      coarseMedia()
+      registerFiles()
+      $layoutTree.set(split('row', [group(['sessions', 'bots']), group(['workspace']), group(['files'])]))
+      $hiddenTreePanes.set(new Set(['files']))
+
+      const { getByTestId } = render(<NarrowOverlays />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'file-browser', mode: 'toggle' } })
+        )
+      })
+
+      expect(getByTestId('files-body')).toBeTruthy()
+      expect(document.querySelector('[data-narrow-drawer="right"]')).toBeTruthy()
+      expect(document.querySelector('[data-narrow-drawer-close]')).toBeTruthy()
+      expect(document.querySelector('[data-narrow-backdrop]')).toBeTruthy()
+      expect($hiddenTreePanes.get().has('files')).toBe(false)
+    })
+
+    it('re-adopts a dismissed pane that left the tree and still opens the drawer', () => {
+      coarseMedia()
+      registerFiles()
+      // Dismissed: files is gone from the tree entirely.
+      $layoutTree.set(split('row', [group(['sessions', 'bots']), group(['workspace'])]))
+
+      const { getByTestId } = render(<NarrowOverlays />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'file-browser', mode: 'open' } })
+        )
+      })
+
+      expect(getByTestId('files-body')).toBeTruthy()
+      expect($layoutTree.get() ? allPaneIds($layoutTree.get()!).includes('files') : false).toBe(true)
+    })
+
+    it('still ignores an id no registered collapsible pane answers to', () => {
+      coarseMedia()
+
+      const { queryByTestId } = render(<NarrowOverlays />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'no-such-pane', mode: 'toggle' } })
+        )
+      })
+
+      expect(queryByTestId('sessions-body')).toBeNull()
+    })
   })
 })
