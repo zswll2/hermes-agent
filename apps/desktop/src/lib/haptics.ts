@@ -87,6 +87,35 @@ export type HapticTrigger = (input?: HapticInput, options?: TriggerOptions) => P
 let registeredTrigger: HapticTrigger | null = null
 let lastSelectionAt = 0
 
+// First-gesture gate. Engines reject navigator.vibrate until the user has
+// produced a gesture in the frame (WebKit logs "Blocked call to
+// navigator.vibrate because user hasn't tapped on the frame"), and web-haptics
+// vibrates from ANY trigger — including startup-phase intents that precede any
+// tap. Every intent stays suppressed until the first pointerdown/touchstart.
+// Accepted tradeoff: this also silences a desktop trackpad tap-haptic before
+// the user's first click — exactly the firing engines refuse anyway.
+let userGestured = false
+
+if (typeof window !== 'undefined') {
+  const markGestured = () => {
+    userGestured = true
+  }
+
+  window.addEventListener('pointerdown', markGestured, { capture: true })
+  window.addEventListener('touchstart', markGestured, { capture: true })
+}
+
+/** Open the gesture gate from an explicit gesture source (tests, or a host
+ * that observes activation elsewhere). */
+export function markUserGesture(): void {
+  userGestured = true
+}
+
+/** Reset the gesture gate between test assertions. */
+export function resetHapticGestureGateForTests(): void {
+  userGestured = false
+}
+
 // Global rolling rate-limit. A runaway upstream loop (auth-expiry error-toast
 // storms, reconnect flaps) can request dozens of haptics a second, which the
 // trackpad actuator renders as a frantic "clickity" buzz. Cap firings to
@@ -101,7 +130,7 @@ export function registerHapticTrigger(trigger: HapticTrigger | null) {
 }
 
 export function triggerHaptic(intent: HapticIntent = 'selection') {
-  if ($hapticsMuted.get() || !registeredTrigger) {
+  if (!userGestured || $hapticsMuted.get() || !registeredTrigger) {
     return
   }
 
