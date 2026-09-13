@@ -5,7 +5,7 @@ import { useSessionView } from '@/app/chat/session-view'
 import { useI18n } from '@/i18n'
 import { Download, MonitorPlay } from '@/lib/icons'
 import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
-import { downloadGatewayMediaFile } from '@/lib/media'
+import { downloadGatewayFileInBrowser, downloadGatewayMediaFile } from '@/lib/media'
 import { previewName } from '@/lib/preview-targets'
 import { notifyError } from '@/store/notifications'
 import { $previewTabSources, closePreviewForSource, openPreview, type PreviewRecordSource } from '@/store/preview'
@@ -105,14 +105,25 @@ export function PreviewAttachment({ source = 'manual', target }: { source?: Prev
     setDownloading(true)
 
     try {
-      // Works in both modes: the Electron main process fetches the bytes
-      // through the session's backend connection (local gateway or remote)
-      // and prompts for a save location.
-      const result = await downloadGatewayMediaFile(target)
+      // Electron: the main process fetches the bytes through the session's
+      // backend connection (local gateway or remote) and prompts for a save
+      // location. Web (no IPC bridge): a browser download of the authenticated
+      // /api/files/download URL — without this branch the bridge check threw
+      // and every attachment download failed on the web app.
+      if (window.hermesDesktop?.saveGatewayFile) {
+        const result = await downloadGatewayMediaFile(target)
 
-      if (mountedRef.current && result.saved) {
-        setDownloaded(true)
-        setTimeout(() => mountedRef.current && setDownloaded(false), 2000)
+        if (mountedRef.current && result.saved) {
+          setDownloaded(true)
+          setTimeout(() => mountedRef.current && setDownloaded(false), 2000)
+        }
+      } else {
+        await downloadGatewayFileInBrowser(target)
+
+        if (mountedRef.current) {
+          setDownloaded(true)
+          setTimeout(() => mountedRef.current && setDownloaded(false), 2000)
+        }
       }
     } catch (error) {
       if (mountedRef.current) {
