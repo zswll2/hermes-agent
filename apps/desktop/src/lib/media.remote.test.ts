@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { $connection } from '@/store/session'
 
 import {
+  downloadGatewayFileInBrowser,
   downloadGatewayMediaFile,
   filePathFromMediaPath,
   gatewayMediaDataUrl,
@@ -266,5 +267,78 @@ describe('downloadGatewayMediaFile', () => {
     await expect(downloadGatewayMediaFile('/Users/me/project/report.md')).rejects.toThrow(
       'Desktop file download bridge'
     )
+  })
+})
+
+describe('downloadGatewayFileInBrowser', () => {
+  const anchorClicks: string[] = []
+
+  const stubFetch = (status: number, mime: string, headers: Record<string, string> = {}) => {
+    const fetchMock = vi.fn(async () => ({
+      headers: new Headers(headers),
+      ok: status >= 200 && status < 300,
+      status,
+      async blob() {
+        return new Blob(['x'], { type: mime })
+      }
+    }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    return fetchMock
+  }
+
+  beforeEach(() => {
+    anchorClicks.length = 0
+    vi.stubGlobal('window', {
+      location: { origin: 'https://web.app' },
+      setTimeout: () => 0
+    })
+    URL.createObjectURL = vi.fn(() => 'blob:download')
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      anchorClicks.push(this.download)
+    })
+  })
+
+  afterEach(() => {
+    delete (URL as { createObjectURL?: unknown }).createObjectURL
+    delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    $connection.set(null)
+  })
+
+  it('fetches the authenticated download URL with a token query when one exists', async () => {
+    const fetchMock = stubFetch(200, 'application/pdf')
+    $connection.set({ mode: 'remote', baseUrl: 'https://web.app', token: 's e/cret' } as never)
+
+    await downloadGatewayFileInBrowser('file:///tmp/a%20b.pdf')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://web.app/api/files/download?path=%2Ftmp%2Fa%20b.pdf&token=s%20e%2Fcret',
+      { credentials: 'same-origin' }
+    )
+    expect(anchorClicks).toEqual(['a b.pdf'])
+  })
+
+  it('falls back to same-origin credentials when the connection carries no token', async () => {
+    const fetchMock = stubFetch(200, 'text/csv', { 'content-disposition': 'attachment; filename="rows.csv"' })
+    $connection.set({ authMode: 'oauth', mode: 'remote', token: null } as never)
+
+    await downloadGatewayFileInBrowser('/tmp/export-2026')
+
+    expect(fetchMock).toHaveBeenCalledWith('https://web.app/api/files/download?path=%2Ftmp%2Fexport-2026', {
+      credentials: 'same-origin'
+    })
+    expect(anchorClicks).toEqual(['rows.csv'])
+  })
+
+  it('throws a visible error on a failed download instead of downloading silently', async () => {
+    stubFetch(404, 'text/plain')
+    $connection.set({ mode: 'remote', baseUrl: 'https://web.app', token: 't' } as never)
+
+    await expect(downloadGatewayFileInBrowser('/tmp/gone.pdf')).rejects.toThrow('Download failed: HTTP 404')
+    expect(anchorClicks).toEqual([])
   })
 })

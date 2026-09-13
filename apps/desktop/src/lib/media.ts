@@ -1,4 +1,5 @@
 import { readDesktopFileDataUrl } from '@/lib/desktop-fs'
+import { attachmentFilename } from '@/lib/download-filename'
 import { capitalize } from '@/lib/text'
 import { $connection } from '@/store/session'
 
@@ -232,6 +233,41 @@ export async function downloadGatewayMediaFile(
       }
     })
   })
+}
+
+/** Browser download of a gateway-local file for shells without the Electron
+ *  save bridge (the web app): fetch GET /api/files/download — same-origin
+ *  credentials carry the session, a token connection adds the `?token=` query
+ *  the route accepts in addition to cookie auth (web-bridge connections are
+ *  always mode 'remote' with baseUrl = this origin) — then hand the blob to an
+ *  `<a download>` anchor. The anchor form (vs window.open) keeps the save flow
+ *  working on iOS Safari and names the file from Content-Disposition. */
+export async function downloadGatewayFileInBrowser(path: string): Promise<void> {
+  const conn = $connection.get()
+  const filePath = filePathFromMediaPath(path)
+  const file = encodeURIComponent(filePath)
+  const token = conn?.token ? `&token=${encodeURIComponent(conn.token)}` : ''
+  const base = conn?.baseUrl || window.location.origin
+
+  const response = await fetch(`${base}/api/files/download?path=${file}${token}`, {
+    credentials: 'same-origin'
+  })
+
+  if (!response.ok) {
+    throw new Error(`Download failed: HTTP ${response.status}`)
+  }
+
+  const blob = await response.blob()
+  const blobUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = blobUrl
+  link.download = attachmentFilename(filePath, blob.type, response.headers.get('content-disposition'))
+  link.rel = 'noopener noreferrer'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000)
 }
 
 export function mediaDisplayLabel(path: string): string {
