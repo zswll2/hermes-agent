@@ -28,6 +28,7 @@ import {
   setToolsetEnabled
 } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { isDesktopToolsetVisible } from '@/lib/desktop-toolsets'
 import { compactNumber } from '@/lib/format'
 import { Loader2 } from '@/lib/icons'
@@ -43,6 +44,7 @@ import type { OfficialSkillInfo, SkillInfo, ToolsetInfo } from '@/types/hermes'
 
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
+import { SIDEBAR_COLLAPSE_MEDIA_QUERY } from '../layout-constants'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
 import {
   CapRow,
@@ -242,6 +244,11 @@ export function SkillsView({
   const gateway = useStoreSelector($gateway, g => (mode === 'mcp' ? g : null))
 
   const [query, setQuery] = useState('')
+
+  // Phone-width viewport (same boundary as the shell's sidebar collapse):
+  // drives the stacked-layout exceptions — no auto-selected detail row, hub
+  // collapsed by default.
+  const narrow = useMediaQuery(SIDEBAR_COLLAPSE_MEDIA_QUERY)
 
   // The hub picker hosts a full docs-site iframe — the single most expensive
   // thing on this page. It mounts lazily (first time the Skills tab is shown)
@@ -502,10 +509,13 @@ export function SkillsView({
   }, [mode, skills, toolsets, t])
 
   // Keep a valid selection: fall back to the first visible row when the
-  // current selection is filtered out (or nothing is selected yet).
+  // current selection is filtered out (or nothing is selected yet). Narrow
+  // sessions skip the fallback — with the detail stacked BELOW the list, an
+  // auto-selected first row would claim half the phone screen before the
+  // user has tapped anything; the list owns the first paint.
   const activeSkill = useMemo(
-    () => visibleSkills.find(s => s.name === selectedSkill) ?? visibleSkills[0] ?? null,
-    [selectedSkill, visibleSkills]
+    () => visibleSkills.find(s => s.name === selectedSkill) ?? (narrow ? null : (visibleSkills[0] ?? null)),
+    [selectedSkill, narrow, visibleSkills]
   )
 
   // A selected catalog row wins the detail pane; it clears when filtered out

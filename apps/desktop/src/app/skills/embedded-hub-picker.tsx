@@ -3,10 +3,12 @@ import { memo, type PointerEvent as ReactPointerEvent, useEffect, useRef, useSta
 
 import { Button } from '@/components/ui/button'
 import type { ProfileScope } from '@/hermes'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
 import { Loader2 } from '@/lib/icons'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
+import { SIDEBAR_COLLAPSE_MEDIA_QUERY } from '@/app/layout-constants'
 import { $hubActions, installHubSkill, UPDATE_ALL_KEY, updateHubSkills } from '@/store/hub-actions'
 import { notify, notifyError } from '@/store/notifications'
 import { $paneHeightOverride, setPaneHeightOverride } from '@/store/panes'
@@ -58,10 +60,13 @@ interface EmbeddedHubPickerProps {
 }
 
 /** The Skills Hub browser for the Skills tab: a resizable iframe of the live
- *  hub where every card installs with one click. Expanded by default —
- *  discovery IS the point — with a collapse toggle (persisted, like every
- *  other pane) and an update-all action. Memoized: the iframe must not sit in
- *  the parent's keystroke/re-render path. */
+ *  hub where every card installs with one click. Expanded by default on
+ *  desktop — discovery IS the point — with a collapse toggle (persisted, like
+ *  every other pane) and an update-all action. Phone-width sessions start
+ *  collapsed (the installed list owns the viewport) with a session-local
+ *  expand state — the persisted height is a desktop preference and must not
+ *  be written from a phone. Memoized: the iframe must not sit in the
+ *  parent's keystroke/re-render path. */
 export const EmbeddedHubPicker = memo(function EmbeddedHubPicker({
   hidden = false,
   installedNames,
@@ -72,13 +77,16 @@ export const EmbeddedHubPicker = memo(function EmbeddedHubPicker({
   // Subscribe to the ONE flag this header renders, not the whole action map —
   // $hubActions churns on every tailed log line during an install.
   const updating = useStoreSelector($hubActions, actions => actions[UPDATE_ALL_KEY]?.running ?? false)
+  const narrow = useMediaQuery(SIDEBAR_COLLAPSE_MEDIA_QUERY)
   // Collapse state rides the same persisted height override the sash writes
   // (0 = collapsed to the header), so "Hide the hub browser" survives tab
   // switches and restarts instead of re-expanding — and re-loading the docs
-  // site — on every visit. Same contract as DetailPane.
+  // site — on every visit. Same contract as DetailPane. Narrow sessions use
+  // session-local state instead (see docstring above).
   const heightOverride = useStore($paneHeightOverride(HUB_PANE_ID))
   const height = heightOverride ?? HUB_DEFAULT_PX
-  const open = height > HUB_COLLAPSED_PX
+  const [narrowOpen, setNarrowOpen] = useState(false)
+  const open = narrow ? narrowOpen : height > HUB_COLLAPSED_PX
   const [dragging, setDragging] = useState(false)
   const sectionRef = useRef<HTMLElement>(null)
 
@@ -177,27 +185,56 @@ export const EmbeddedHubPicker = memo(function EmbeddedHubPicker({
       )}
       ref={sectionRef}
     >
-      {/* Top-edge drag sash — pull the whole hub section up/down. */}
-      <div
-        className="group/hubsash absolute inset-x-0 top-0 z-10 h-1 -translate-y-1/2 cursor-row-resize"
-        onDoubleClick={() => setPaneHeightOverride(HUB_PANE_ID, undefined)}
-        onPointerDown={startDrag}
-      >
+      {/* Top-edge sash — pull the whole hub section up/down. Fine-pointer
+          desktop gesture only: a 1px touch target is unusable on phones, and
+          its writes are the persisted (desktop) height preference. */}
+      {!narrow && (
         <div
-          className={cn(
-            'absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors',
-            dragging ? 'bg-(--ui-stroke-secondary)' : 'group-hover/hubsash:bg-(--ui-stroke-secondary)'
-          )}
-        />
-      </div>
-      <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
+          className="group/hubsash absolute inset-x-0 top-0 z-10 h-1 -translate-y-1/2 cursor-row-resize"
+          onDoubleClick={() => setPaneHeightOverride(HUB_PANE_ID, undefined)}
+          onPointerDown={startDrag}
+        >
+          <div
+            className={cn(
+              'absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors',
+              dragging ? 'bg-(--ui-stroke-secondary)' : 'group-hover/hubsash:bg-(--ui-stroke-secondary)'
+            )}
+          />
+        </div>
+      )}
+      {/* Narrow: the whole header row toggles the hub (≥44px tap target);
+          buttons stop propagation so they don't double-fire the toggle. */}
+      <div
+        className={cn('flex shrink-0 items-center justify-between px-3 py-1.5', narrow && 'cursor-pointer select-none')}
+        onClick={narrow ? () => setNarrowOpen(v => !v) : undefined}
+      >
         <span className="text-[0.7rem] font-medium text-(--ui-text-tertiary)">{h.pickerTitle}</span>
         <div className="flex items-center gap-1">
-          <Button disabled={updating} onClick={updateAll} size="xs" variant="text">
+          <Button
+            disabled={updating}
+            onClick={event => {
+              event.stopPropagation()
+              updateAll()
+            }}
+            size="xs"
+            variant="text"
+          >
             {updating && <Loader2 className="size-3 animate-spin" />}
             {updating ? h.updating : h.updateAll}
           </Button>
-          <Button onClick={() => setPaneHeightOverride(HUB_PANE_ID, open ? 0 : undefined)} size="xs" variant="text">
+          <Button
+            onClick={event => {
+              event.stopPropagation()
+
+              if (narrow) {
+                setNarrowOpen(v => !v)
+              } else {
+                setPaneHeightOverride(HUB_PANE_ID, open ? 0 : undefined)
+              }
+            }}
+            size="xs"
+            variant="text"
+          >
             {open ? h.pickerHide : h.pickerBrowse}
           </Button>
         </div>
@@ -215,7 +252,9 @@ export const EmbeddedHubPicker = memo(function EmbeddedHubPicker({
             style={{
               border: '1px solid var(--ui-stroke-secondary)',
               borderRadius: 8,
-              flex: `0 1 ${height}px`,
+              // Narrow sessions have no sash: the viewport takes a fixed share
+              // of the column, leaving the list the majority without a drag.
+              flex: narrow ? '0 1 45%' : `0 1 ${height}px`,
               maxWidth: '100%',
               minHeight: 0,
               minWidth: 320,

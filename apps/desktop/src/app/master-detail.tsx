@@ -117,34 +117,36 @@ export function MasterDetail({
     <div className="flex h-full min-h-0 flex-col">
       <div
         className={cn(
-          'grid min-h-0 flex-1 grid-cols-1',
+          // Narrow stacks the two columns; the list row fills (1fr) and the
+          // detail row sizes to its content — capped on the detail wrapper
+          // below — so an empty detail collapses to its footer and the list
+          // owns the first paint on phones.
+          'grid min-h-0 flex-1 grid-cols-1 max-sm:grid-rows-[minmax(0,1fr)_auto]',
           split === 'wide' ? MASTER_DETAIL_WIDE_COLS : 'sm:grid-cols-[14rem_minmax(0,1fr)]'
         )}
         ref={gridRef}
         style={override !== undefined ? ({ '--md-split': `${override}px` } as CSSProperties) : undefined}
       >
-        {resizeId ? (
-          <>
-            {list}
-            <div className="relative grid min-h-0 min-w-0">
+        {list}
+        {/* The detail wrapper is unconditional (both consumers share the
+            narrow cap on it); a `resizeId` just adds the seam sash inside. */}
+        <div className="relative grid min-h-0 min-w-0 max-sm:max-h-[55%]">
+          {resizeId ? (
+            <div
+              className="group/vsash absolute inset-y-0 left-0 z-10 hidden w-1 -translate-x-1/2 cursor-col-resize sm:block"
+              onDoubleClick={() => setPaneWidthOverride(resizeId, undefined)}
+              onPointerDown={startSplitDrag}
+            >
               <div
-                className="group/vsash absolute inset-y-0 left-0 z-10 hidden w-1 -translate-x-1/2 cursor-col-resize sm:block"
-                onDoubleClick={() => setPaneWidthOverride(resizeId, undefined)}
-                onPointerDown={startSplitDrag}
-              >
-                <div
-                  className={cn(
-                    'absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors',
-                    dragging ? 'bg-(--ui-stroke-secondary)' : 'group-hover/vsash:bg-(--ui-stroke-secondary)'
-                  )}
-                />
-              </div>
-              {rest}
+                className={cn(
+                  'absolute inset-y-0 left-1/2 w-px -translate-y-1/2 transition-colors',
+                  dragging ? 'bg-(--ui-stroke-secondary)' : 'group-hover/vsash:bg-(--ui-stroke-secondary)'
+                )}
+              />
             </div>
-          </>
-        ) : (
-          children
-        )}
+          ) : null}
+          {rest}
+        </div>
       </div>
       {pane}
     </div>
@@ -168,8 +170,8 @@ export function DetailColumn({
   children,
   footer
 }: {
-  actionBar?: ReactNode
-  children: ReactNode
+  actionBar?: ReactNode;
+  children: ReactNode;
   footer?: ReactNode
 }) {
   return (
