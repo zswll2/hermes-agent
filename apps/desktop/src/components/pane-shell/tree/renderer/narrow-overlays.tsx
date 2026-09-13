@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils'
 
 import { PANE_TOGGLE_REVEAL_EVENT } from '../..'
 import { allPaneIds, findGroupOfPane } from '../model'
-import { $hiddenTreePanes, $layoutTree, $narrowViewport } from '../store'
+import { $hiddenTreePanes, $layoutTree, $narrowViewport, revealTreePane } from '../store'
 
 import { paneChrome } from './track-model'
 
@@ -56,6 +56,9 @@ export function NarrowOverlays() {
   const collapsiblesRef = useRef(collapsibles)
   collapsiblesRef.current = collapsibles
 
+  const panesRef = useRef(panes)
+  panesRef.current = panes
+
   // ⌘B / ⌘G's narrow branch dispatches the app's toggle-reveal event with the
   // REAL pane id — accept those via each contribution's revealAliases.
   useEffect(() => {
@@ -73,7 +76,25 @@ export function NarrowOverlays() {
         return
       }
 
-      const match = collapsiblesRef.current.find(p => p.id === id || paneChrome(p).revealAliases?.includes(id))
+      const mode = detail?.mode ?? 'toggle'
+      let match = collapsiblesRef.current.find(p => p.id === id || paneChrome(p).revealAliases?.includes(id))
+
+      if (!match && mode !== 'close') {
+        // The named pane sits OUTSIDE collapsibles when a chrome toggle hid it
+        // ($hiddenTreePanes — the right rail BOOTS closed, so `files` is
+        // hidden at every phone's first paint) or a stale dismissal took it
+        // out of the tree. The titlebar button still promises a drawer, so
+        // heal the pane (un-dismiss, adopt, un-hide, un-collapse its column)
+        // and reveal anyway instead of pressing on nothing.
+        const recoverable = panesRef.current.find(
+          p => paneChrome(p).collapsible && (p.id === id || paneChrome(p).revealAliases?.includes(id))
+        )
+
+        if (recoverable) {
+          revealTreePane(recoverable.id)
+          match = recoverable
+        }
+      }
 
       if (!match) {
         return
@@ -85,7 +106,6 @@ export function NarrowOverlays() {
       // stacked panes (SESSIONS | BOTS strip), and closing "the left sidebar"
       // must dismiss that drawer whichever tab is active — a row selection
       // fires it without knowing which pane fronts the strip.
-      const mode = detail?.mode ?? 'toggle'
       setReveal(current => {
         if (mode === 'open') {
           return { id: match.id, pinned: true }
@@ -239,7 +259,12 @@ export function NarrowOverlays() {
       {/* Backdrop: PINNED reveals and ANY touch reveal (an open drawer the
           user cannot hover away needs a tap-anywhere target). */}
       {revealed && (reveal?.pinned || coarse) && (
-        <div aria-hidden className="absolute inset-0 z-30 bg-black/30" onPointerDown={() => setReveal(null)} />
+        <div
+          aria-hidden
+          className="absolute inset-0 z-30 bg-black/30"
+          data-narrow-backdrop=""
+          onPointerDown={() => setReveal(null)}
+        />
       )}
 
       {revealed && renderDrawerBody(revealed, sideOf(revealed), zoneStrip)}
