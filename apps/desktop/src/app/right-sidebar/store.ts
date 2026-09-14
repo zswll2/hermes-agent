@@ -8,7 +8,18 @@ export const $terminalTakeover = atom(storedBoolean(TAKEOVER_KEY, false))
 
 $terminalTakeover.subscribe(active => persistBoolean(TAKEOVER_KEY, active))
 
-export const setTerminalTakeover = (active: boolean) => $terminalTakeover.set(active)
+/** Session-only latch: the user explicitly opened the terminal pane THIS
+ *  session. Never persisted — a cold-start restore of takeover=true is not
+ *  explicit intent (see shouldAutoMountTerminal). Closing does not unlatch. */
+export const $terminalTakeoverIntent = atom(false)
+
+export const setTerminalTakeover = (active: boolean) => {
+  if (active) {
+    $terminalTakeoverIntent.set(true)
+  }
+
+  $terminalTakeover.set(active)
+}
 
 /** A command queued to run in the embedded terminal. The terminal pane flushes
  *  (and clears) it once its session is live, so a value set before the pane

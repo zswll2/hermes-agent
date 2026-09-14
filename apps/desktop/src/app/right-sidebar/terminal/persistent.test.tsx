@@ -10,9 +10,14 @@ import { $terminalTakeover } from '../store'
 
 import { PersistentTerminal, TerminalSlot } from './persistent'
 
-vi.mock('../store', async () => ({
-  $terminalTakeover: (await import('nanostores')).atom(false)
-}))
+vi.mock('../store', async () => {
+  const { atom } = await import('nanostores')
+
+  return {
+    $terminalTakeover: atom(false),
+    $terminalTakeoverIntent: atom(false)
+  }
+})
 
 vi.mock('./terminals', () => ({
   ensureTerminal: vi.fn()

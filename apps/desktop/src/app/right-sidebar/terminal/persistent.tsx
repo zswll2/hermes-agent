@@ -3,13 +3,14 @@ import { atom } from 'nanostores'
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { isElementInHiddenPane, PANE_HIDDEN_ATTR } from '@/components/pane-shell/pane-visibility'
-import { $layoutTree } from '@/components/pane-shell/tree/store'
+import { $layoutTree, $narrowViewport } from '@/components/pane-shell/tree/store'
 import { markRightPanePerf } from '@/debug/right-pane-events'
 import { createRendererLoopPauseController } from '@/lib/renderer-loop-pause'
 import { $paneStates } from '@/store/panes'
 
-import { $terminalTakeover } from '../store'
+import { $terminalTakeover, $terminalTakeoverIntent } from '../store'
 
+import { shouldAutoMountTerminal } from './should-auto-mount'
 import { ensureTerminal } from './terminals'
 import { TerminalWorkspace } from './workspace'
 
@@ -64,6 +65,8 @@ const sameRect = (a: Rect | null, b: Rect) =>
 export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalProps) {
   const slot = useStore($slot)
   const terminalTakeover = useStore($terminalTakeover)
+  const narrowViewport = useStore($narrowViewport)
+  const takeoverIntent = useStore($terminalTakeoverIntent)
   const [rect, setRect] = useState<Rect | null>(null)
   const [ready, setReady] = useState(false)
 
@@ -75,11 +78,14 @@ export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalP
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    if (terminalTakeover && ready) {
+    if (
+      shouldAutoMountTerminal({ takeover: terminalTakeover, narrow: narrowViewport, sessionIntent: takeoverIntent }) &&
+      ready
+    ) {
       setMounted(true)
       ensureTerminal()
     }
-  }, [terminalTakeover, ready])
+  }, [terminalTakeover, narrowViewport, takeoverIntent, ready])
 
   useLayoutEffect(() => {
     if (!slot) {
