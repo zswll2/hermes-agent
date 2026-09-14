@@ -3670,6 +3670,25 @@ button,
   [data-narrow-reveal] [data-slot='composer-dock']:not([data-popped-out]) {
     bottom: var(--drawer-bottom-align);
   }
+
+  /* Non-reveal bottom stack, same single baseline: the statusbar carries the
+     inset as margin so the stack orders dock → statusbar → home-indicator
+     band (whole stack bottom = viewport − var(--drawer-bottom-align), which
+     is ≤ viewport − var(--safe-bottom)). Margin on the statusbar — NOT
+     padding on the shell — because the shell is the overlay drawers'
+     geometry context and padding would clip them short of the viewport
+     bottom; and the flex-1 content column absorbs the inset, so the dock
+     (anchored bottom-0 of that column) stacks flush above the statusbar.
+     During a reveal the statusbar unmounts (controller.tsx suspendStatusbar)
+     and takes this margin with it, so the drawer spans full height and the
+     dock lift rule above takes over on the SAME baseline: change
+     --drawer-bottom-align and all three sites move in lockstep. The dock's
+     own keyboard padding (max(shell-pad, safe-bottom, keyboard-inset))
+     composes unchanged inside the box. Coarse only — fine pointers keep
+     margin 0, pixel-identical. */
+  [data-slot='statusbar'] {
+    margin-bottom: var(--drawer-bottom-align);
+  }
 }
 
 @keyframes narrow-drawer-in-left {
