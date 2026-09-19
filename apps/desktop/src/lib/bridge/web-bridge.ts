@@ -353,7 +353,7 @@ async function webNotify(payload: {
 }
 
 export function createWebBridge(): Window['hermesDesktop'] {
-  return {
+  const bridge = {
     // ── Real implementations (P0 data plane) ──
     api: webApi,
     getConnection: webGetConnection,
@@ -443,7 +443,12 @@ export function createWebBridge(): Window['hermesDesktop'] {
     profile: {
       get: unavailable('profile.get'),
       remember: unavailable('profile.remember'),
-      set: unavailable('profile.set')
+      set: unavailable('profile.set'),
+      // Web 没有 Electron 侧“窗口默认 profile”概念：启动期明确返回 null（不绑定默认），
+      // 设置退化为无副作用，订阅返回空解绑函数（与上游 desktop 的自带测试桩同形）。
+      getDefault: async () => null,
+      setDefault: async route => route,
+      onDefaultChanged: () => () => {}
     },
     requestMicrophoneAccess: unavailable('requestMicrophoneAccess'),
     readFileText: unavailable('readFileText'),
@@ -500,4 +505,15 @@ export function createWebBridge(): Window['hermesDesktop'] {
     findInPage: unavailable('findInPage'),
     stopFindInPage: unavailable('stopFindInPage')
   }
+
+  // 上游会持续给桌面桥新增通道；缺失的通道在 web 模式必须“降级”而不是让启动期崩：
+  // on* 返回空的解绑函数，其余返回与 unavailable() 同形的 reject 函数。
+  // 这里用 Proxy 兜底一次，免得每次跟上游 rebase 都要逐个补桩（造型断言只解决类型兼容）。
+  return new Proxy(bridge, {
+    get(target, prop, receiver) {
+      if (Reflect.has(target, prop)) return Reflect.get(target, prop, receiver)
+      if (typeof prop !== 'string') return undefined
+      return /^on[A-Z]/.test(prop) ? neverFires() : unavailable(prop)
+    }
+  }) as unknown as Window['hermesDesktop']
 }
