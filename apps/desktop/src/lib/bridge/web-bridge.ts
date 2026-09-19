@@ -10,7 +10,7 @@
 // with `WebBridgeCapabilityError` instead of silently returning undefined.
 import { buildHermesWebSocketUrl, type GatewayWsUrlResult, type WebSocketAuthParam } from '@hermes/shared'
 
-import type { HermesApiRequest, HermesConnection, HermesSelectPathsOptions } from '@/global'
+import type { HermesApiRequest, HermesConnection, HermesSelectPathsOptions, DesktopProfileRoute } from '@/global'
 
 import { readWebFileDataUrl, registerWebBlob, registerWebFile } from './web-file-registry'
 
@@ -373,6 +373,12 @@ export function createWebBridge(): Window['hermesDesktop'] {
     translucencySupported: false,
     localModelsEnabled: false,
 
+    // screenshot 是 optional 通道（screenshot?: ScreenshotApi），调用方用
+    // `if (!api)` truthiness 守卫检测不可用（composer 挂截图 / 设置页截图项）。
+    // 必须显式置 undefined，否则 Proxy 兜底会返回 truthy 的 unavailable()
+    // 函数——守卫通过后 api.onStatus(...) 直接 "not a function" 崩溃。
+    screenshot: undefined,
+
     // ── Subscriptions with no web event source: subscribe, never fire ──
     onBrowserPopoutClosed: neverFires,
     onPreviewFileChanged: neverFires,
@@ -447,7 +453,7 @@ export function createWebBridge(): Window['hermesDesktop'] {
       // Web 没有 Electron 侧“窗口默认 profile”概念：启动期明确返回 null（不绑定默认），
       // 设置退化为无副作用，订阅返回空解绑函数（与上游 desktop 的自带测试桩同形）。
       getDefault: async () => null,
-      setDefault: async route => route,
+      setDefault: async (route: DesktopProfileRoute) => route,
       onDefaultChanged: () => () => {}
     },
     requestMicrophoneAccess: unavailable('requestMicrophoneAccess'),
@@ -457,7 +463,7 @@ export function createWebBridge(): Window['hermesDesktop'] {
     saveImageBuffer: webSaveImageBuffer,
     saveClipboardImage: unavailable('saveClipboardImage'),
     // Browser Files carry no real path; the registry mints a virtual one.
-    getPathForFile: file => registerWebFile(file),
+    getPathForFile: (file: File) => registerWebFile(file),
     normalizePreviewTarget: unavailable('normalizePreviewTarget'),
     watchPreviewFile: unavailable('watchPreviewFile'),
     stopPreviewFileWatch: unavailable('stopPreviewFileWatch'),
