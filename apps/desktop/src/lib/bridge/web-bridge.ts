@@ -14,6 +14,8 @@ import type { HermesApiRequest, HermesConnection, HermesSelectPathsOptions, Desk
 
 import { readWebFileDataUrl, registerWebBlob, registerWebFile } from './web-file-registry'
 
+import { WEB_OPTIONAL_CHANNELS } from './web-optional-channels'
+
 export class WebBridgeCapabilityError extends Error {
   readonly capability: string
 
@@ -513,13 +515,18 @@ export function createWebBridge(): Window['hermesDesktop'] {
   }
 
   // 上游会持续给桌面桥新增通道；缺失的通道在 web 模式必须“降级”而不是让启动期崩：
-  // on* 返回空的解绑函数，其余返回与 unavailable() 同形的 reject 函数。
-  // 这里用 Proxy 兜底一次，免得每次跟上游 rebase 都要逐个补桩（造型断言只解决类型兼容）。
+  // on* 返回空的解绑函数，可选通道（global.d.ts 里 `?:`）必须返回 undefined——消费方
+  // 用 `?.()` / `if (!x)` 守卫，缺失就该短路；只有必需通道才返回 unavailable() 的
+  // reject 桩（其消费方直接调用，undefined 会变成 TypeError）。
+  // Proxy 兜底一次，免得每次跟上游 rebase 都要逐个补桩（造型断言只解决类型兼容）；
+  // 可选清单由 scripts/gen-web-optional-channels.cjs 从 global.d.ts 生成。
   return new Proxy(bridge, {
     get(target, prop, receiver) {
       if (Reflect.has(target, prop)) return Reflect.get(target, prop, receiver)
       if (typeof prop !== 'string') return undefined
-      return /^on[A-Z]/.test(prop) ? neverFires() : unavailable(prop)
+      if (/^on[A-Z]/.test(prop)) return neverFires()
+      if (WEB_OPTIONAL_CHANNELS.has(prop)) return undefined
+      return unavailable(prop)
     }
   }) as unknown as Window['hermesDesktop']
 }

@@ -326,3 +326,38 @@ describe('bridge install contract', () => {
     await expect(window.hermesDesktop.api({ path: '/x' })).rejects.toBeInstanceOf(Error)
   })
 })
+
+describe('web-bridge optional vs required channel contract (rebase guard)', () => {
+  // 上游把 Electron 专有通道声明为可选（global.d.ts 里 `?:`），消费方用
+  // `?.()` / `if (!x)` 守卫。web 上没有实现时这些通道必须保持 undefined——
+  // 若 Proxy 兜底返回 truthy 的 unavailable() 桩，守卫会被骗过、桩被调用、
+  // promise reject 无人处理 → pageerror（screenshot 崩溃同根）。本测试钉死
+  // 该契约，上游 rebase 改掉结构时立刻变红，而不是等用户手机上报错。
+  const bridge = createWebBridge()
+
+  it('optional channels are undefined (guards short-circuit)', () => {
+    // 直接对应一次真机崩溃：screenshot 是 optional 通道，`if (!api)` 守卫。
+    expect(bridge.screenshot).toBeUndefined()
+    // 选几个同样 optional、web 无实现的通道做抽查（同 contract）。
+    expect(bridge.setActiveWork).toBeUndefined()
+    expect(bridge.desktopPluginsRoot).toBeUndefined()
+    expect(bridge.setPreviewShortcutActive).toBeUndefined()
+    expect(bridge.getAgentRoster).toBeUndefined()
+    expect(bridge.gitRoot).toBeUndefined()
+  })
+
+  it('required channels degrade to reject stubs (callers call them directly)', async () => {
+    // getPoolLimits / connections 在 global.d.ts 是必需（无 `?:`），调用方直接调用，
+    // 必须给 reject 桩而不是 undefined（undefined 会 TypeError）。
+    await expect(bridge.getPoolLimits()).rejects.toBeInstanceOf(WebBridgeCapabilityError)
+    await expect(bridge.connections.list()).rejects.toBeInstanceOf(WebBridgeCapabilityError)
+    await expect(bridge.getVersion()).rejects.toBeInstanceOf(WebBridgeCapabilityError)
+  })
+
+  it('on* subscriptions still degrade to inert unsubscribers regardless of optionality', () => {
+    // onWindowStateChanged 是可选的 on* 通道但仍须提供解绑函数（not undefined）。
+    const sub = (bridge as unknown as { onWindowStateChanged?: () => unknown }).onWindowStateChanged
+    expect(typeof sub).toBe('function')
+    expect(sub?.()).toBeUndefined()
+  })
+})
