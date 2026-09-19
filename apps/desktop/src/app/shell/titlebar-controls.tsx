@@ -261,9 +261,13 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
     return null
   }
 
+  // Top calc adds var(--safe-top) so the fixed clusters clear the iOS status
+  // bar in the web build (black-translucent); collapses to 0 on desktop where
+  // env() reports no inset. Kept in lockstep with [data-contrib-shell]'s
+  // in-flow safe-top padding (both add exactly one inset, never two).
   const leftClusterClass = cn(
     titlebarToolClusterClass,
-    'left-(--titlebar-controls-left) top-(--titlebar-controls-top) translate-y-(--titlebar-controls-y-nudge)'
+    'left-(--titlebar-controls-left) top-[calc(var(--titlebar-controls-top)+var(--safe-top,0px))] translate-y-(--titlebar-controls-y-nudge)'
   )
 
   // A contributed full page (`extension`) yields the fixed clusters only while
@@ -285,7 +289,10 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
           <Slot area="titleBar.left" />
         </div>
         <div
-          className={cn(titlebarToolClusterClass, 'right-(--titlebar-tools-right) top-(--titlebar-controls-top)')}
+          className={cn(
+            titlebarToolClusterClass,
+            'right-(--titlebar-tools-right) top-[calc(var(--titlebar-controls-top)+var(--safe-top,0px))]'
+          )}
           data-titlebar-cluster="right"
         >
           <Slot area="titleBar.right" />
@@ -316,7 +323,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
           aria-label={t.shell.appControls}
           className={cn(
             titlebarToolClusterClass,
-            'top-[calc(var(--titlebar-controls-top)+var(--right-rail-top-inset,0px))] right-[calc(var(--titlebar-tools-right)+var(--shell-preview-toolbar-gap,0))]'
+            'top-[calc(var(--titlebar-controls-top)+var(--right-rail-top-inset,0px)+var(--safe-top,0px))] right-[calc(var(--titlebar-tools-right)+var(--shell-preview-toolbar-gap,0))]'
           )}
         >
           {visiblePaneTools.map(tool => (
@@ -327,7 +334,10 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
 
       <div
         aria-label={t.shell.appControls}
-        className={cn(titlebarToolClusterClass, 'right-(--titlebar-tools-right) top-(--titlebar-controls-top)')}
+        className={cn(
+          titlebarToolClusterClass,
+          'right-(--titlebar-tools-right) top-[calc(var(--titlebar-controls-top)+var(--safe-top,0px))]'
+        )}
         data-titlebar-cluster="right"
       >
         {visibleSystemTools.map(tool => (

@@ -3834,20 +3834,12 @@ button,
    The glyph stays at its designed size — only the hit area grows. Coarse
    pointers only, so mouse-driven titlebars keep their tight 24px rhythm. */
 @media (pointer: coarse) {
-  /* Titlebar band height: the band's center must equal the fixed clusters'
-   button centers. Button box y = band.top + t and is 44px tall, so the band
-   needs H = 2·(t + 22); with the measured --titlebar-controls-top t=5
-   (wiring.tsx measures it at runtime) that is 54px. Height-only — the band
-   already sits on the shell's safe-top padding, so padding here would
-   double-count the inset (see the calc-top comment above). LOCKSTEP: the
-   four cluster-clearance values below (--chat-top-gap in :root, zone strip,
-   drawer strip, drawer close) are re-derived from this height as
-   cluster bottom 49 + 8 − band bottom; change H and re-derive all four. */
-  [data-slot='titlebar-band'] {
-    height: 54px;
-  }
-
-  [data-slot='titlebar-chrome'] [data-slot='tooltip-trigger'] {
+  /* The fixed cluster buttons are the 44px touch targets; Tip wraps each
+     button and carries data-slot="tooltip-trigger". Cluster top = the
+     measured --titlebar-controls-top (5) + --safe-top (web build). The
+     in-flow titlebar header (34px) deliberately stays put: it renders
+     beneath the fixed clusters and only provides the bottom border. */
+  [data-titlebar-cluster] [data-slot='tooltip-trigger'] {
     min-height: 44px;
     min-width: 44px;
   }
