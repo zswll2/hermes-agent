@@ -3832,7 +3832,12 @@ button,
 
 /* Touch devices: titlebar icon buttons meet the 44px minimum touch target.
    The glyph stays at its designed size — only the hit area grows. Coarse
-   pointers only, so mouse-driven titlebars keep their tight 24px rhythm. */
+   pointers only, so mouse-driven titlebars keep their tight 24px rhythm.
+   (2026-09-19) The 44px hit area must NOT push the glyph off the 34px grey
+   band's vertical center: align the cluster content to flex-start and pad
+   6px so the icon's visual center (top 64 + 6 + 7 ≈ 76) lands on the band
+   center (59..93 → 76) instead of the hit-area center (86). Desktop mouse
+   pointers are unaffected (not coarse). */
 @media (pointer: coarse) {
   /* The fixed cluster buttons are the 44px touch targets; Tip wraps each
      button and carries data-slot="tooltip-trigger". Cluster top = the
@@ -3842,6 +3847,8 @@ button,
   [data-titlebar-cluster] [data-slot='tooltip-trigger'] {
     min-height: 44px;
     min-width: 44px;
+    align-items: flex-start;
+    padding-top: 6px;
   }
 
   /* The layout editor card is the narrow-viewport path to "restore single
