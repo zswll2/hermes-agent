@@ -11,6 +11,7 @@
 import { buildHermesWebSocketUrl, type GatewayWsUrlResult, type WebSocketAuthParam } from '@hermes/shared'
 
 import type { HermesApiRequest, HermesConnection, HermesSelectPathsOptions, DesktopProfileRoute } from '@/global'
+import { startBrowserDownload } from '@/lib/browser-download'
 
 import { readWebFileDataUrl, registerWebBlob, registerWebFile } from './web-file-registry'
 
@@ -220,6 +221,39 @@ async function webGetConnection(_profile?: null | string): Promise<HermesConnect
     // oauth-mode dials always mint a fresh ticket; the cached wsUrl only
     // matters as the token-mode fallback, so leave it empty when gated.
     wsUrl: gated ? '' : buildHermesWebSocketUrl({ path: '/api/ws', authParam: ['token', token] })
+  }
+}
+
+/** The browser's own save path (see `lib/browser-download`): Electron opens a
+ *  native save dialog, so a click-to-save in the browser has to mean a real
+ *  download. This channel used to reject — and the consumer's truthiness probe
+ *  (`if (window.hermesDesktop?.saveImageFromUrl)`) passes a reject stub, while
+ *  the browser fallback behind that probe only recognises Electron's "No
+ *  handler registered" error. Net effect: every image save in web mode ended in
+ *  an error toast, with the working fallback unreachable. */
+async function webSaveImageFromUrl(url: string): Promise<boolean> {
+  await startBrowserDownload(url)
+
+  return true
+}
+
+/** There is no native directory picker in a browser, but "which folder does
+ *  this backend start in" is a server fact the remote fs layer already reads
+ *  (`/api/fs/default-cwd`, `lib/desktop-fs.desktopDefaultCwd`). Without a real
+ *  implementation the reject stub satisfied `store/session.ts`'s
+ *  `if (!settings)` probe, threw on the first call, and aborted the whole cwd
+ *  seed — including the REST fallback scheduled right after it. `dir` stays
+ *  null: a user-configured override is a native-only concept (Settings →
+ *  Sessions picker); `resolvedCwd` is what the backend actually uses. */
+async function webGetDefaultProjectDir(): Promise<{ defaultLabel: string; dir: null | string; resolvedCwd: string }> {
+  try {
+    const { cwd } = await webApi<{ cwd?: string }>({ path: '/api/fs/default-cwd' })
+
+    return { defaultLabel: '', dir: null, resolvedCwd: cwd ?? '' }
+  } catch {
+    // An older backend without the route must not abort the caller's seeding
+    // sequence again — report "nothing known" and let the next rung run.
+    return { defaultLabel: '', dir: null, resolvedCwd: '' }
   }
 }
 
@@ -461,7 +495,7 @@ export function createWebBridge(): Window['hermesDesktop'] {
     requestMicrophoneAccess: unavailable('requestMicrophoneAccess'),
     readFileText: unavailable('readFileText'),
     selectPaths: webSelectPaths,
-    saveImageFromUrl: unavailable('saveImageFromUrl'),
+    saveImageFromUrl: webSaveImageFromUrl,
     saveImageBuffer: webSaveImageBuffer,
     saveClipboardImage: unavailable('saveClipboardImage'),
     // Browser Files carry no real path; the registry mints a virtual one.
@@ -472,7 +506,7 @@ export function createWebBridge(): Window['hermesDesktop'] {
     fetchLinkTitle: unavailable('fetchLinkTitle'),
     sanitizeWorkspaceCwd: unavailable('sanitizeWorkspaceCwd'),
     settings: {
-      getDefaultProjectDir: unavailable('settings.getDefaultProjectDir'),
+      getDefaultProjectDir: webGetDefaultProjectDir,
       pickDefaultProjectDir: unavailable('settings.pickDefaultProjectDir'),
       setDefaultProjectDir: unavailable('settings.setDefaultProjectDir')
     },

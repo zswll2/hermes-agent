@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { isCoarsePointer } from '@/hooks/use-media-query'
+
 /**
  * KEYBOARD-FIRST OVERLAYS — the shared contract for anything you open with a
  * hotkey and drive from a search field: the composer model menu, the ⌘K
@@ -30,7 +32,11 @@ const RELEASE_EVENT = 'hermes:release-typing-focus'
  * knowledge of whether a hotkey or a click opened it.
  */
 export function usePointerQuiet(): boolean {
-  const [quiet, setQuiet] = useState(true)
+  // Touch starts AWAKE: there is no hover to protect, and the wake events
+  // below (`mousemove`/`wheel`) never fire on a touch device — starting quiet
+  // there left every cmdk list `pointer-events-none` for the life of the
+  // overlay, i.e. unscrollable and untappable by finger.
+  const [quiet, setQuiet] = useState(() => !isCoarsePointer())
 
   useEffect(() => {
     const wake = () => setQuiet(false)

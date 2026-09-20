@@ -7,6 +7,14 @@ export const matchesQuery = (query: string) =>
  *  the OS setting can flip mid-session. */
 export const prefersReducedMotion = () => matchesQuery('(prefers-reduced-motion: reduce)')
 
+/** Touch-first environments, in one place: no mouse (so no hover, and no
+ *  `mousemove`/`wheel` to wake anything keyed off pointer presence), and iOS
+ *  raises the software keyboard for a programmatic `focus()` that lands inside
+ *  a tap's activation window. Every touch-only branch keys off THIS query. */
+export const COARSE_POINTER_MEDIA_QUERY = '(pointer: coarse)'
+
+export const isCoarsePointer = () => matchesQuery(COARSE_POINTER_MEDIA_QUERY)
+
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => matchesQuery(query))
 

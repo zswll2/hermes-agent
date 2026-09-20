@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 
-import { downloadFilename, imageFilename } from '@/lib/download-filename'
+import { startBrowserDownload } from '@/lib/browser-download'
+import { imageFilename } from '@/lib/download-filename'
 import { useI18n } from '@/i18n'
 import { notify, notifyError } from '@/store/notifications'
 
@@ -8,25 +9,6 @@ function isMissingIpcHandler(error: unknown): boolean {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
 
   return message.includes("No handler registered for 'hermes:saveImageFromUrl'")
-}
-
-async function startBrowserDownload(src: string) {
-  const response = await fetch(src)
-
-  if (!response.ok) {
-    throw new Error(`Could not fetch image: ${response.status}`)
-  }
-
-  const blob = await response.blob()
-  const blobUrl = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = blobUrl
-  link.download = downloadFilename(src, blob.type)
-  link.rel = 'noopener noreferrer'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000)
 }
 
 /** Save an image to disk via the desktop IPC bridge, falling back to a browser

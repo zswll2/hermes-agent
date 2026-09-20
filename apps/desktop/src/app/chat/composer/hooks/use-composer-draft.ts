@@ -11,6 +11,7 @@ import { SLASH_COMMAND_RE } from '@hermes/shared'
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { isElementInHiddenPane } from '@/components/pane-shell/pane-visibility'
+import { isCoarsePointer } from '@/hooks/use-media-query'
 import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import {
@@ -211,7 +212,13 @@ export function useComposerDraft({
   // effect and steal the caret. usePaneVisible defaults true outside a tab
   // stack, so tiles, pop-outs, and secondary windows still auto-focus.
   useEffect(() => {
-    if (!inputDisabled && paneVisible && !floating) {
+    // Auto-focus on session switch is the desktop keyboard-first nicety
+    // ("switch chat, keep typing"). On touch that focus() lands inside the
+    // activation window of the tap that picked the session, so iOS throws the
+    // software keyboard over the transcript the moment a session is chosen —
+    // the user asked for a chat, not for the keyboard. Touch follows the
+    // platform convention instead: tapping the input is what focuses it.
+    if (!inputDisabled && paneVisible && !floating && !isCoarsePointer()) {
       focusInput()
     }
   }, [floating, focusInput, focusKey, inputDisabled, paneVisible])

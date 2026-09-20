@@ -3783,6 +3783,18 @@ button,
     padding-bottom: var(--drawer-bottom-align);
   }
 
+  /* The dock does NOT re-apply the bottom inset while the statusbar below it is
+     present: that bar's own margin already lifts this whole column clear of the
+     home indicator, so padding the dock by `--safe-bottom` too counted the
+     inset TWICE — measured 106px of dead space under the composer on an iOS
+     standalone PWA vs ~48px in Safari (where the inset is 0, which is exactly
+     why it only shows up once the page is added to the home screen). Keyboard
+     lift and the shell pad still apply, and with the bar hidden (user pref) or
+     unmounted (narrow reveal) the dock keeps its own safe-bottom avoidance. */
+  [data-contrib-shell]:has([data-slot='statusbar']) [data-slot='composer-dock'] {
+    padding-bottom: max(var(--composer-shell-pad-block-end), var(--keyboard-inset));
+  }
+
   /* While a narrow drawer reveal is active, the dock adopts the SAME bottom
      baseline the drawer's content is inset by, so the drawer's last row and
      the dock's bottom edge stop fighting over the bottom edge. Scoped to the
