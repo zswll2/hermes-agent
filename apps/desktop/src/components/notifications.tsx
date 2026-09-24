@@ -118,7 +118,13 @@ function TopCenterStack({
       aria-label={copy.region}
       className={cn(
         REGION_BASE,
-        'left-1/2 top-[calc(var(--titlebar-height,34px)+0.75rem)] w-[min(28rem,calc(100%-2rem))] -translate-x-1/2 flex-col p-1',
+        // Below the fixed titlebar toolbar, not under it: the stack is portaled
+        // to <body>, so it is outside the shell subtree that carries the
+        // safe-area padding AND the toolbar sits above the notch — the old
+        // `--titlebar-height + 0.75rem` put the banner straight over the icon
+        // row (measured y 46..165 vs toolbar y 49..93 on a notched phone),
+        // where its pointer-events:auto inner card swallowed every toolbar tap.
+        'left-1/2 top-[calc(var(--safe-top,0px)+var(--titlebar-clearance,37px)+0.25rem)] w-[min(28rem,calc(100%-2rem))] -translate-x-1/2 flex-col p-1',
         expanded && 'max-h-[70vh] overflow-y-auto overscroll-contain'
       )}
       role="region"

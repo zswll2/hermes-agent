@@ -96,13 +96,163 @@ function check(name, ok, detail) {
         side => pos[side] && pos[side].top >= SAFE_TOP - 1
       )
       check(`titlebar 簇让位安全区 (top ≥ ${SAFE_TOP}px)`, topOk, JSON.stringify(pos))
-      // 3. 触屏下热区 ≥ 44px（防 44px 规则选择器再失配）
+      // 3. 触屏下热区仍要够大：宽度 ≥ 44px，高度 ≥ 34px（顶带高）。
+      //    高度上限不再要求 44 —— 44px 高会越出 34px 顶带 15px，那 15px 的
+      //    隐形热区正是下方抽屉 tab 条被压住、点了会关抽屉的元凶（见第 4 项）。
       const hotOk = ['left', 'right'].every(
-        side => pos[side] && pos[side].h >= 44 && pos[side].w >= 44
+        side => pos[side] && pos[side].w >= 44 && pos[side].h >= 34
       )
-      check('触控热区 ≥ 44px', hotOk, JSON.stringify(pos))
+      check('触控热区 宽≥44 / 高≥顶带', hotOk, JSON.stringify(pos))
     } else {
       check('titlebar 簇存在（登录后可断言位置）', false, 'clusters=0，页面可能仍是欢迎幕')
+    }
+
+    // 4. 顶部 tab 条不得被工具栏图标压住（2026-09-24 缺陷回归门）：
+    //    抽屉是覆盖层，其包含块是壳体 padding box（顶到刘海、在工具栏之上），
+    //    工具栏却是 fixed z-70 浮层 —— 抽屉顶部内容必须靠
+    //    `--titlebar-clearance` 自己让位，否则 tab 条整条落在图标下面，
+    //    真机上点 SESSIONS 实际按到"隐藏侧边栏"，抽屉被关掉。
+    const drawerGeo = await page.evaluate(() => {
+      const box = el => {
+        const r = el.getBoundingClientRect()
+        return { bottom: Math.round(r.bottom), h: Math.round(r.height), label: (el.innerText || '').trim().slice(0, 12), x: Math.round(r.x), y: Math.round(r.y) }
+      }
+      const clusterBottom = Math.max(
+        0,
+        ...[...document.querySelectorAll('[data-titlebar-cluster]')].map(c => c.getBoundingClientRect().bottom)
+      )
+      const drawer = document.querySelector('[data-narrow-drawer]')
+      if (!drawer) return { clusterBottom, opened: false }
+      const tabs = [...drawer.querySelectorAll('[role="tab"],[data-slot="pane-tab"]')]
+      return {
+        clusterBottom,
+        opened: true,
+        paddingTop: getComputedStyle(drawer).paddingTop,
+        closeButton: Boolean(drawer.querySelector('[data-narrow-drawer-close]')),
+        tabs: tabs.map(t => {
+          const r = t.getBoundingClientRect()
+          const hit = document.elementFromPoint(Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2))
+          return { ...box(t), hitSelf: hit === t || t.contains(hit) }
+        }),
+        firstRow: (() => {
+          const b = [...drawer.querySelectorAll('button')].find(el => el.getBoundingClientRect().height > 0)
+          if (!b) return null
+          const r = b.getBoundingClientRect()
+          const cx = Math.round(r.x + r.width * 0.8)
+          const cy = Math.round(r.y + r.height / 2)
+          const hit = document.elementFromPoint(cx, cy)
+          return { ...box(b), rightHalfHitSelf: hit === b || b.contains(hit) }
+        })()
+      }
+    })
+
+    if (!drawerGeo.opened) {
+      // 打开左侧抽屉（触摸语义 = pinned reveal）
+      const toggle = await page.$('button[aria-label="隐藏侧边栏"], button[aria-label="显示侧边栏"]')
+      if (toggle) {
+        const b = await toggle.boundingBox()
+        await page.touchscreen.tap(Math.round(b.x + b.width / 2), Math.round(b.y + b.height / 2))
+        await page.waitForTimeout(900)
+      }
+    }
+    const drawerOk = drawerGeo.opened
+      ? drawerGeo
+      : await page.evaluate(() => {
+          const drawer = document.querySelector('[data-narrow-drawer]')
+          if (!drawer) return { opened: false }
+          const clusterBottom = Math.max(
+            0,
+            ...[...document.querySelectorAll('[data-titlebar-cluster]')].map(c => c.getBoundingClientRect().bottom)
+          )
+          return {
+            opened: true,
+            clusterBottom,
+            paddingTop: getComputedStyle(drawer).paddingTop,
+            closeButton: Boolean(drawer.querySelector('[data-narrow-drawer-close]')),
+            tabs: [...drawer.querySelectorAll('[role="tab"],[data-slot="pane-tab"]')].map(t => {
+              const r = t.getBoundingClientRect()
+              const hit = document.elementFromPoint(Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2))
+              return { y: Math.round(r.y), label: (t.innerText || '').trim().slice(0, 12), hitSelf: hit === t || t.contains(hit) }
+            }),
+            firstRow: null
+          }
+        })
+
+    if (!drawerOk.opened) {
+      check('抽屉可打开（tab 条断言前提）', false, '触摸标题栏侧边栏按钮后无 [data-narrow-drawer]')
+    } else {
+      const clearOk = drawerOk.tabs.length > 0 && drawerOk.tabs.every(t => t.y >= drawerOk.clusterBottom)
+      check(
+        '抽屉 tab 条在工具栏之下（零相交）',
+        clearOk,
+        `工具栏底=${Math.round(drawerOk.clusterBottom)} 抽屉 padding-top=${drawerOk.paddingTop} tabs=${JSON.stringify(drawerOk.tabs)}`
+      )
+      check('抽屉 tab 可点（hit-test 命中自己）', drawerOk.tabs.every(t => t.hitSelf), JSON.stringify(drawerOk.tabs))
+      check('抽屉首行右半段不被工具栏吃掉', !drawerOk.firstRow || drawerOk.firstRow.rightHalfHitSelf, JSON.stringify(drawerOk.firstRow))
+      check('抽屉有 44px 关闭按钮（触控）', drawerOk.closeButton === true, `closeButton=${drawerOk.closeButton}`)
+
+      // 真触摸点 tab：命中的话抽屉保持打开（修复前：抽屉被关掉）
+      const firstTab = await page.$('[data-narrow-drawer] [role="tab"], [data-narrow-drawer] [data-slot="pane-tab"]')
+      if (firstTab) {
+        const b = await firstTab.boundingBox()
+        await page.touchscreen.tap(Math.round(b.x + b.width / 2), Math.round(b.y + b.height / 2))
+        await page.waitForTimeout(800)
+        const stillOpen = await page.evaluate(() => Boolean(document.querySelector('[data-narrow-drawer]')))
+        check('真触摸点抽屉 tab 不关抽屉', stillOpen, `tap(${Math.round(b.x + b.width / 2)},${Math.round(b.y + b.height / 2)}) → drawer=${stillOpen}`)
+      }
+    }
+
+    // 5. 顶部通知横幅不得压住工具栏（它会拦截指针：有更新提示时整个工具栏点不动）
+    const notif = await page.evaluate(() => {
+      const clusterBottom = Math.max(
+        0,
+        ...[...document.querySelectorAll('[data-titlebar-cluster]')].map(c => c.getBoundingClientRect().bottom)
+      )
+      const region = document.querySelector('body > [role="region"][aria-label]')
+      if (!region) return { present: false, clusterBottom }
+      const r = region.getBoundingClientRect()
+      return { present: true, clusterBottom, top: Math.round(r.top), overlaps: r.top < clusterBottom }
+    })
+    check(
+      '通知横幅在工具栏之下（或未出现）',
+      !notif.present || !notif.overlaps,
+      JSON.stringify(notif)
+    )
+
+    // 6. 宽屏触摸下停靠 zone 的 tab 条同样不得被压（同一算术，另一形态）
+    const wide = await browser.newContext({
+      viewport: { width: 1024, height: 768 },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 2
+    })
+    const widePage = await wide.newPage()
+    await widePage.goto(`${BASE}/app/`, { waitUntil: 'load', timeout: 60000 })
+    await widePage.waitForTimeout(5000)
+    const docked = await widePage.evaluate(() => {
+      const clusterBottom = Math.max(
+        0,
+        ...[...document.querySelectorAll('[data-titlebar-cluster]')].map(c => c.getBoundingClientRect().bottom)
+      )
+      const tabs = [...document.querySelectorAll('[data-zone-tabstrip] [role="tab"],[data-zone-tabstrip] [data-slot="pane-tab"]')]
+        .filter(t => t.getBoundingClientRect().height > 0)
+        .map(t => {
+          const r = t.getBoundingClientRect()
+          const hit = document.elementFromPoint(Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2))
+          return { y: Math.round(r.y), label: (t.innerText || '').trim().slice(0, 12), hitSelf: hit === t || t.contains(hit) }
+        })
+      return { clusterBottom, tabs }
+    })
+    await wide.close()
+    if (docked.tabs.length === 0) {
+      check('停靠 zone tab 条在工具栏之下（本布局无停靠 tab，跳过）', true, JSON.stringify(docked))
+    } else {
+      check(
+        '停靠 zone tab 条在工具栏之下（零相交）',
+        docked.tabs.every(t => t.y >= docked.clusterBottom),
+        JSON.stringify(docked)
+      )
+      check('停靠 zone tab 可点', docked.tabs.every(t => t.hitSelf), JSON.stringify(docked))
     }
 
     await page.screenshot({ path: '/tmp/web-probe-screenshot.png' })

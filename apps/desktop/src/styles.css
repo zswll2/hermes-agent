@@ -3659,6 +3659,19 @@ html[data-hud-window] [data-slot='popover-content'] {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --keyboard-inset: 0px;
+  /* ── 顶部工具栏占位：单一来源 ──────────────────────────────────────────
+     工具栏是 z-70 的 fixed 浮层，主壳把 --titlebar-height 钉成 0（见
+     app/contrib/controller.tsx），所以每个顶部内容面都得自己让位。以前这里有
+     四个各写各的数字（JS 常量 34 / 3px / 23px / 不存在的 54px band），本次缺陷
+     就是这么漏出来的。现在只有两个变量：
+       --titlebar-toolbar-h  图标热区顶偏移(--titlebar-controls-top, wiring 运行时
+                             测量=5) + 热区高（精细 24 → 29；粗指针下热区收进
+                             34px 顶带、偏移归零 → 34）
+       --titlebar-clearance  工具栏净占 + 8px 呼吸（精细 37 / 粗 42）
+     新增顶部面一律消费 --titlebar-clearance，不要再写魔法数字。 */
+  --pane-tab-row-h: 28px;
+  --titlebar-toolbar-h: calc(var(--titlebar-controls-top, 5px) + 24px);
+  --titlebar-clearance: calc(var(--titlebar-toolbar-h) + 8px);
   /* The single bottom-baseline alignment value for touch: what coarse drawers
      ([data-narrow-drawer]) and full-page bodies pad their scroll content by,
      AND what the composer dock lifts itself by while a narrow reveal is
@@ -3667,16 +3680,18 @@ html[data-hud-window] [data-slot='popover-content'] {
      reveal-inactive coarse layouts compute nothing from it. */
   --drawer-bottom-align: calc(var(--safe-bottom, 0px) + 12px);
   /* Coarse pointers add this much clearance below the in-flow titlebar for
-     the transcript's first bubble (thread/list.tsx top pad). Same arithmetic
-     as the zone-strip margin below (cluster bottom 49 + 8 breathing room −
-     titlebar band 54) so the first message clears the toolbar exactly like
-     the first tab row. Fine pointers keep 0 — pixel-neutral. */
+     the transcript's first bubble (thread/list.tsx top pad). The toolbar
+     occupies exactly the 34px band (see the cluster rule below), so the first
+     message clears it by 34 + 3 = 37px — same as the first tab row. Fine
+     pointers keep 0 — pixel-neutral. */
   --chat-top-gap: 0px;
 }
 
 @media (pointer: coarse) {
   :root {
     --chat-top-gap: 3px;
+    --pane-tab-row-h: 44px;
+    --titlebar-toolbar-h: 34px;
   }
 }
 
@@ -3761,7 +3776,23 @@ button,
 /* Narrow-viewport drawer (session sidebar et al. below the collapse
    breakpoint) slides in from its edge. No safe-area padding here: the
    drawer's containing block already shifted below the notch via the
-   shell-root padding, so an extra inset would double it. */
+   shell-root padding, so an extra inset would double it.
+   The toolbar, however, is NOT in that containing block: it is a fixed z-70
+   overlay pinned to the notch, so the drawer (which starts at the notch and
+   therefore ABOVE the 34px band) has to clear it itself or its zone tab strip
+   and first rows land under the icons — measured on a 390px viewport: tapping
+   SESSIONS hit the sidebar toggle and closed the drawer. */
+[data-narrow-drawer] {
+  padding-top: var(--titlebar-clearance);
+}
+
+/* The drawer's close affordance is touch-only: a fine pointer closes the
+   drawer with the backdrop or Escape, and this keeps the mouse-driven drawer
+   pixel-identical to before it existed. */
+[data-narrow-drawer-close] {
+  display: none;
+}
+
 [data-narrow-drawer='left'] {
   animation: narrow-drawer-in-left 160ms ease-out;
 }
@@ -3842,25 +3873,30 @@ button,
    padding rule anymore — with the calc top it would double-count the
    inset. */
 
-/* Touch devices: titlebar icon buttons meet the 44px minimum touch target.
-   The glyph stays at its designed size — only the hit area grows. Coarse
-   pointers only, so mouse-driven titlebars keep their tight 24px rhythm.
-   (2026-09-19) The 44px hit area must NOT push the glyph off the 34px grey
-   band's vertical center: align the cluster content to flex-start and pad
-   6px so the icon's visual center (top 64 + 6 + 7 ≈ 76) lands on the band
-   center (59..93 → 76) instead of the hit-area center (86). Desktop mouse
-   pointers are unaffected (not coarse). */
+/* Touch devices: titlebar icon buttons meet the 44px minimum WIDTH touch
+   target. The glyph stays at its designed size and position.
+   Height is deliberately NOT 44px: a 44px-tall box (top 5 → bottom 49) sticks
+   15px out of the 34px band the layout reserves for the toolbar, and that
+   invisible overhang sat on top of the drawer's tab strip and the sidebar's
+   first rows (a phone tap on SESSIONS landed on the sidebar toggle instead).
+   A 34px-tall box anchored at the band top contains the whole hit area inside
+   the band, with the glyph still centered on it — same visual as before.
+   Fine pointers are outside the media query: 24px boxes, pixel-identical. */
 @media (pointer: coarse) {
-  /* The fixed cluster buttons are the 44px touch targets; Tip wraps each
-     button and carries data-slot="tooltip-trigger". Cluster top = the
-     measured --titlebar-controls-top (5) + --safe-top (web build). The
-     in-flow titlebar header (34px) deliberately stays put: it renders
-     beneath the fixed clusters and only provides the bottom border. */
+  /* The fixed cluster buttons are the touch targets; Tip wraps each button and
+     carries data-slot="tooltip-trigger". Cluster top = the measured
+     --titlebar-controls-top (5) + --safe-top, which centers a 24px box in the
+     34px band — with a 34px box that offset must go, or the box would ride
+     5px low and re-open a 5px overhang. */
+  [data-titlebar-cluster] {
+    top: var(--safe-top, 0px);
+  }
+
   [data-titlebar-cluster] [data-slot='tooltip-trigger'] {
-    min-height: 44px;
+    align-items: center;
+    min-height: var(--titlebar-toolbar-h);
     min-width: 44px;
-    align-items: flex-start;
-    padding-top: 6px;
+    padding-top: 0;
   }
 
   /* The layout editor card is the narrow-viewport path to "restore single
@@ -3870,32 +3906,37 @@ button,
     min-height: 44px;
   }
 
-  /* Toolbar↔tab clearance, in lockstep with the band height above: coarse
-     clusters occupy y 5..49 (top 5 + 44px targets) and the 54px band fully
-     contains them, leaving 3px = cluster bottom 49 + 8px breathing room −
-     band 54 before the first tab row. The strip also grows to a 44px touch
-     row (labels truncate) so its own trailing controls reach touch size
-     without overlapping the tabs. Fine pointers: no margin, pixel-identical
-     to before. */
+  /* Toolbar↔tab clearance. The toolbar occupies exactly y 0..34 of the shell
+     content box (see the cluster rule above), so a tab row must start at
+     --titlebar-clearance (42) to keep its 8px breathing room. Two shapes:
+       · bottom-anchored strips (`absolute inset-x-0 bottom-0` inside the zone
+         header) follow the header's bottom edge — the header has to GROW, and
+         min-height beats the inline height the renderer sets;
+       · in-flow strips move with the header's padding-top.
+     Both are covered below; nothing sets a margin-top any more (it was inert on
+     the bottom-anchored shape, which is how the old 23px→3px value silently
+     stopped working). */
   [data-zone-tabstrip] {
-    margin-top: 3px;
-    min-height: 44px;
+    min-height: var(--pane-tab-row-h);
   }
 
-  /* Narrow-drawer tab strips: SAME arithmetic, mirrored for the overlay
-     drawer strip (which cannot carry data-zone-tabstrip — that attribute is
-     the drag-drop stacking key and the drawer must stay out of drag
-     hit-testing). Change band/touch sizes in lockstep with the rule above. */
-  [data-narrow-drawer-strip] {
-    margin-top: 3px;
-    min-height: 44px;
+  [data-panel-header]:has([data-zone-tabstrip]) {
+    min-height: calc(var(--titlebar-clearance) + var(--pane-tab-row-h));
+    padding-top: var(--titlebar-clearance);
   }
 
-  /* …and the drawer close button rides the same displacement: flush with
-     the strip band (same 3px) so it clears the toolbar clusters by the
-     same 8px. Tabs live at the strip's left; the button at the drawer's
-     right — no hit-rect contact. Fine pointers never render it. */
+  /* Drawer chrome row: hosts the zone tab strip (when the zone stacks panes)
+     and the close button, at the one y that clears the toolbar (the drawer's
+     own padding-top, above, is what moves this row down). */
+  [data-narrow-drawer-chrome] {
+    min-height: var(--pane-tab-row-h);
+  }
+
+  /* Close affordance: touch-only (fine pointers close the drawer with the
+     backdrop or Escape), 44px wide, on the same row as the tabs. */
   [data-narrow-drawer-close] {
-    top: 3px;
+    display: grid;
+    min-height: var(--pane-tab-row-h);
+    min-width: 44px;
   }
 }
