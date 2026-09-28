@@ -11,6 +11,9 @@
  * 用法（升级脚本里、或手动确认新 dist-web 行为）：
  *   node apps/desktop/scripts/web-probe.cjs [--port 9319] [--safe-top 44]
  * 默认配 9319 e2e 实例（auth_required:false 免登录，serve 同一份 dist-web）。
+ * 环境变量：WEB_PROBE_PREFIX（默认 /api/plugins/hermes-webapp，即插件的承载路径）
+ *           WEB_PROBE_TOKEN（非 gated 实例的会话 token，按 origin 注入）
+ *           WEB_PROBE_CHROME（chromium 可执行文件路径）
  * 退出码：0=全部通过，1=有行为断言失败，2=探针自身故障（连不上等）。
  */
 const { chromium } = require('playwright')
@@ -22,6 +25,20 @@ function find(flag) {
   return i === -1 ? -1 : i + 1
 }
 const BASE = `http://127.0.0.1:${PORT}`
+// 承载路径与鉴权（2026-09-28 隔离方案）：/app 由仓库外插件承载，公网 /app/ 被 nginx 重写到该前缀；
+// 探针直连实例时用同一前缀（可用 WEB_PROBE_PREFIX 覆盖）。
+// 非 gated 实例需要会话 token —— 必须**按 origin** 注入：全局 extraHTTPHeaders 会把
+// 自定义头发给第三方字体域，触发 CORS 噪声（实测 4 条 console error）。
+const WEB_PREFIX = process.env.WEB_PROBE_PREFIX ?? '/api/plugins/hermes-webapp'
+const TOKEN = process.env.WEB_PROBE_TOKEN ?? ''
+async function applyToken(ctx) {
+  if (!TOKEN) return
+  await ctx.route(`${BASE}/**`, route =>
+    route.continue({
+      headers: { ...route.request().headers(), 'X-Hermes-Session-Token': TOKEN }
+    })
+  )
+}
 const results = [] // {name, ok, detail}
 function check(name, ok, detail) {
   results.push({ name, ok, detail })
@@ -44,6 +61,7 @@ function check(name, ok, detail) {
       hasTouch: true,
       deviceScaleFactor: 3
     })
+    await applyToken(ctx)
     const page = await ctx.newPage()
 
     const pageErrors = []
@@ -58,7 +76,7 @@ function check(name, ok, detail) {
     })
 
     // 1. workspace 必须真实渲染（登录后视图）——抓 screenshot 崩溃类回归
-    await page.goto(`${BASE}/app/`, { waitUntil: 'load', timeout: 60000 })
+    await page.goto(`${BASE}${WEB_PREFIX}/`, { waitUntil: 'load', timeout: 60000 })
     await page.waitForTimeout(5000)
     const rendered = await page.evaluate(() => {
       const text = document.body?.innerText ?? ''
@@ -226,8 +244,9 @@ function check(name, ok, detail) {
       hasTouch: true,
       deviceScaleFactor: 2
     })
+    await applyToken(wide)
     const widePage = await wide.newPage()
-    await widePage.goto(`${BASE}/app/`, { waitUntil: 'load', timeout: 60000 })
+    await widePage.goto(`${BASE}${WEB_PREFIX}/`, { waitUntil: 'load', timeout: 60000 })
     await widePage.waitForTimeout(5000)
     const docked = await widePage.evaluate(() => {
       const clusterBottom = Math.max(
@@ -263,7 +282,7 @@ function check(name, ok, detail) {
   }
 
   const okCount = results.filter(r => r.ok).length
-  console.log(`\n[web-probe] ${okCount}/${results.length} 通过  (端口 ${PORT}, safe-top ${SAFE_TOP})`)
+  console.log(`\n[web-probe] ${okCount}/${results.length} 通过  (端口 ${PORT}, 路径 ${WEB_PREFIX}, safe-top ${SAFE_TOP})`)
   for (const r of results) {
     console.log(`  ${r.ok ? 'PASS' : 'FAIL'}  ${r.name}`)
     if (!r.ok) console.log(`        ${r.detail}`)
