@@ -23,6 +23,11 @@
 }
 
 [data-slot='sidebar-wrapper'] {
+  /* iOS standalone（主屏图标）实测：100vh = 整屏 874pt，而可见区只有 812pt，差 62pt
+     恰好是状态栏；`h-screen`(100vh) 于是让应用比可见区高 62pt，底部整条被挤出屏幕
+     （输入坞底边 840 > 812 → 输入框只剩 22pt 可见 = "显示不全"）。
+     dvh 跟可见区一致：standalone 812 / 浏览器内也是可见区 / 桌面 dvh == vh 无变化。 */
+  height: 100dvh;
   padding-top: var(--hs-top);
   padding-bottom: var(--hs-bottom);
 }
