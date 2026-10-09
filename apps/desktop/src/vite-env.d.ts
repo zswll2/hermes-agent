@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+// Build-mode flag injected by vite `define` (defined in BOTH modes — see
+// vite.config.ts; a bare identifier would throw in the Electron bundle).
+declare const __HERMES_WEB__: boolean
+
 // @novnc/novnc ships no typings (its export is core/rfb.js); the surface the Bot Screen pane uses.
 // Declared here because `apps/desktop/src/**/*.d.ts` is gitignored except for the allowlisted files,
 // and an ambient `declare module` only works in a script-scoped (import-free) declaration file.

@@ -1,0 +1,566 @@
+// Browser implementation of the `window.hermesDesktop` bridge.
+//
+// The web build runs the SAME renderer source as Electron; every native
+// capability the renderer expects arrives through this shim instead of the
+// preload script. REST goes same-origin through `api()` (the single REST choke
+// point — `src/api/client.ts` and the direct-call domain files all land here),
+// the WebSocket URL is minted per dial (cookie → ws-ticket when the dashboard
+// gate is on, injected session token on loopback), and everything that needs a
+// machine (windows, overlays, local fs dialogs, terminals, updates) rejects
+// with `WebBridgeCapabilityError` instead of silently returning undefined.
+import { buildHermesWebSocketUrl, type GatewayWsUrlResult, type WebSocketAuthParam } from '@hermes/shared'
+
+import type { HermesApiRequest, HermesConnection, HermesSelectPathsOptions, DesktopProfileRoute } from '@/global'
+import { startBrowserDownload } from '@/lib/browser-download'
+
+import { readWebFileDataUrl, registerWebBlob, registerWebFile } from './web-file-registry'
+
+import { WEB_OPTIONAL_CHANNELS } from './web-optional-channels'
+
+export class WebBridgeCapabilityError extends Error {
+  readonly capability: string
+
+  constructor(capability: string) {
+    super(`This capability is not available in the browser: ${capability}`)
+    this.name = 'WebBridgeCapabilityError'
+    this.capability = capability
+  }
+}
+
+export class WebApiError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'WebApiError'
+    this.status = status
+  }
+}
+
+/** 401/403 from the backend: the session (cookie or injected token) is gone. */
+export class WebApiAuthError extends WebApiError {
+  constructor(status: number, message: string) {
+    super(status, message)
+    this.name = 'WebApiAuthError'
+  }
+}
+
+declare global {
+  interface Window {
+    // Injected into /app's index.html by the dashboard server (same
+    // convention as the dashboard SPA — web_server_dashboard.py).
+    __HERMES_SESSION_TOKEN__?: string
+    __HERMES_AUTH_REQUIRED__?: boolean
+  }
+}
+
+const SESSION_HEADER = 'X-Hermes-Session-Token'
+
+const warned = new Set<string>()
+
+/** Where the once-per-capability degradation notice goes: web builds EXPECT
+ *  every `unavailable()` channel to be missing (no Electron main behind the
+ *  page), so a dozen startup `warn`s there drowned real console noise during
+ *  mobile acceptance — `debug` keeps it retrievable without the noise. Hosts
+ *  where the bridge SHOULD be complete (tests simulating Electron, future
+ *  embedders) keep the `warn`. Pure so both sides are unit-testable. */
+export function degradationLogLevel(webBuild: boolean): 'debug' | 'warn' {
+  return webBuild ? 'debug' : 'warn'
+}
+
+function logOnce(capability: string): void {
+  if (warned.has(capability)) {return}
+  warned.add(capability)
+
+  console[degradationLogLevel(__HERMES_WEB__)]('[web-bridge] unavailable:', capability)
+}
+
+/**
+ * Structured degradation for a required bridge member the browser cannot
+ * offer. Rejects with `WebBridgeCapabilityError` on first use and logs once
+ * per capability at the level `degradationLogLevel` picks — `debug` in web
+ * builds (expected-missing channels must not bury real warnings), `warn`
+ * where the member should exist. Rejection semantics are identical either
+ * way; only visibility changes.
+ */
+function unavailable(capability: string): (...args: unknown[]) => Promise<never> {
+  return (...args: unknown[]) => {
+    logOnce(capability)
+
+    return Promise.reject(new WebBridgeCapabilityError(capability))
+  }
+}
+
+// A subscription with no web-side event source. Subscribing succeeds and the
+// unsubscribe is a no-op; the callback simply never fires.
+const neverFires = () => () => {}
+
+function authHeaders(hasJsonBody: boolean): Headers {
+  const headers = new Headers()
+
+  if (hasJsonBody) {headers.set('content-type', 'application/json')}
+  const token = window.__HERMES_SESSION_TOKEN__
+
+  if (token) {headers.set(SESSION_HEADER, token)}
+
+  return headers
+}
+
+function withProfileParam(path: string, profile?: string | null): string {
+  if (!profile) {return path}
+  const sep = path.includes('?') ? '&' : '?'
+
+  return `${path}${sep}profile=${encodeURIComponent(profile)}`
+}
+
+// Multipart body for HermesApiRequest.upload. FormData lets the browser set
+// the multipart boundary itself — hand-building one is the classic corruption
+// bug. No content-type header: fetch derives it (with boundary) from the body.
+function uploadFormData(upload: NonNullable<HermesApiRequest['upload']>): FormData {
+  const form = new FormData()
+
+  form.append('file', new Blob([upload.bytes], { type: upload.contentType || 'application/octet-stream' }), upload.filename)
+
+  return form
+}
+
+async function webApi<T>(request: HermesApiRequest): Promise<T> {
+  // pluginRest sends uploads without an explicit method — a multipart body
+  // implies POST.
+  const method = (request.upload ? request.method ?? 'POST' : request.method ?? 'GET').toUpperCase()
+  const upload = request.upload
+
+  if (upload && (method === 'GET' || method === 'HEAD')) {
+    throw new WebApiError(400, 'upload requires a body-bearing method')
+  }
+
+  const jsonBody = !upload && request.body !== undefined && method !== 'GET' && method !== 'HEAD'
+
+  const init: RequestInit = upload
+    ? {
+        method,
+        headers: authHeaders(false),
+        body: uploadFormData(upload),
+        credentials: 'same-origin',
+        signal: request.timeoutMs ? AbortSignal.timeout(request.timeoutMs) : undefined
+      }
+    : {
+        method,
+        headers: authHeaders(jsonBody),
+        body: jsonBody ? JSON.stringify(request.body) : undefined,
+        credentials: 'same-origin',
+        signal: request.timeoutMs ? AbortSignal.timeout(request.timeoutMs) : undefined
+      }
+
+  const res = await fetch(withProfileParam(request.path, request.profile), init)
+
+  if (res.status === 401 || res.status === 403) {
+    throw new WebApiAuthError(res.status, `${res.status}: ${await res.text().catch(() => res.statusText)}`)
+  }
+
+  if (!res.ok) {
+    throw new WebApiError(res.status, `${res.status}: ${await res.text().catch(() => res.statusText)}`)
+  }
+
+  const text = await res.text()
+
+  return (text ? (JSON.parse(text) as T) : (undefined as T)) ?? (null as T)
+}
+
+/** Auth pair for a WS dial: ticket (gated) or injected token (loopback). */
+async function buildWsAuthParam(): Promise<WebSocketAuthParam> {
+  if (window.__HERMES_AUTH_REQUIRED__) {
+    const res = await fetch('/api/auth/ws-ticket', { method: 'POST', credentials: 'same-origin' })
+
+    if (!res.ok) {
+      // Session cookie expired — the existing GatewayReauthRequiredError UX
+      // picks this up through `needsOauthLogin`.
+      throw new WebApiAuthError(res.status, `/api/auth/ws-ticket: HTTP ${res.status}`)
+    }
+
+    const data = (await res.json()) as { ticket: string }
+
+    return ['ticket', data.ticket]
+  }
+
+  return ['token', window.__HERMES_SESSION_TOKEN__ ?? '']
+}
+
+async function webGetGatewayWsUrl(_profile?: null | string): Promise<GatewayWsUrlResult> {
+  try {
+    const authParam = await buildWsAuthParam()
+
+    return { ok: true, wsUrl: buildHermesWebSocketUrl({ path: '/api/ws', authParam }) }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+
+    if (error instanceof WebApiAuthError) {return { ok: false, needsOauthLogin: true, error: message }}
+
+    return { ok: false, error: message }
+  }
+}
+
+// The browser is always "remote": one same-origin backend, no process pool.
+// mode='remote' makes the existing remote paths (desktop-fs REST, desktop-git
+// REST) engage without touching those modules.
+async function webGetConnection(_profile?: null | string): Promise<HermesConnection> {
+  const gated = window.__HERMES_AUTH_REQUIRED__ === true
+  const token = window.__HERMES_SESSION_TOKEN__ ?? ''
+
+  return {
+    baseUrl: window.location.origin,
+    isFullscreen: false,
+    nativeOverlayWidth: 0,
+    token,
+    logs: [],
+    windowButtonPosition: null,
+    mode: 'remote',
+    remoteKind: 'url',
+    authMode: gated ? 'oauth' : 'token',
+    source: 'settings',
+    // oauth-mode dials always mint a fresh ticket; the cached wsUrl only
+    // matters as the token-mode fallback, so leave it empty when gated.
+    wsUrl: gated ? '' : buildHermesWebSocketUrl({ path: '/api/ws', authParam: ['token', token] })
+  }
+}
+
+/** The browser's own save path (see `lib/browser-download`): Electron opens a
+ *  native save dialog, so a click-to-save in the browser has to mean a real
+ *  download. This channel used to reject — and the consumer's truthiness probe
+ *  (`if (window.hermesDesktop?.saveImageFromUrl)`) passes a reject stub, while
+ *  the browser fallback behind that probe only recognises Electron's "No
+ *  handler registered" error. Net effect: every image save in web mode ended in
+ *  an error toast, with the working fallback unreachable. */
+async function webSaveImageFromUrl(url: string): Promise<boolean> {
+  await startBrowserDownload(url)
+
+  return true
+}
+
+/** There is no native directory picker in a browser, but "which folder does
+ *  this backend start in" is a server fact the remote fs layer already reads
+ *  (`/api/fs/default-cwd`, `lib/desktop-fs.desktopDefaultCwd`). Without a real
+ *  implementation the reject stub satisfied `store/session.ts`'s
+ *  `if (!settings)` probe, threw on the first call, and aborted the whole cwd
+ *  seed — including the REST fallback scheduled right after it. `dir` stays
+ *  null: a user-configured override is a native-only concept (Settings →
+ *  Sessions picker); `resolvedCwd` is what the backend actually uses. */
+async function webGetDefaultProjectDir(): Promise<{ defaultLabel: string; dir: null | string; resolvedCwd: string }> {
+  try {
+    const { cwd } = await webApi<{ cwd?: string }>({ path: '/api/fs/default-cwd' })
+
+    return { defaultLabel: '', dir: null, resolvedCwd: cwd ?? '' }
+  } catch {
+    // An older backend without the route must not abort the caller's seeding
+    // sequence again — report "nothing known" and let the next rung run.
+    return { defaultLabel: '', dir: null, resolvedCwd: '' }
+  }
+}
+
+// Registry-first: browser-picked files resolve from the in-tab registry;
+// real backend paths fall through to the remote fs REST endpoint.
+async function webReadFileDataUrl(path: string): Promise<string> {
+  const webFile = await readWebFileDataUrl(path)
+
+  if (webFile) {
+    return webFile
+  }
+
+  const res = await fetch(withProfileParam(`/api/fs/read-data-url?path=${encodeURIComponent(path)}`), {
+    headers: authHeaders(false),
+    credentials: 'same-origin'
+  })
+
+  if (!res.ok) {throw new WebApiError(res.status, `read-data-url: HTTP ${res.status}`)}
+  const data = (await res.json()) as string | { dataUrl?: string }
+
+  return typeof data === 'string' ? data : (data.dataUrl ?? '')
+}
+
+// One long-lived hidden input serves every pick; on-demand creation+removal
+// would race Playwright/automation and re-picks mid-frame.
+const FILE_INPUT_TEST_ID = 'web-bridge-file-input'
+
+let sharedFileInput: HTMLInputElement | null = null
+let pendingPick: null | (() => void) = null
+
+function sharedPickerInput(accept: string, multiple: boolean): HTMLInputElement {
+  if (!sharedFileInput) {
+    const input = document.createElement('input')
+
+    input.type = 'file'
+    input.hidden = true
+    input.dataset.testid = FILE_INPUT_TEST_ID
+    input.addEventListener('cancel', () => pendingPick?.())
+    input.addEventListener('change', () => pendingPick?.())
+    document.body.appendChild(input)
+    sharedFileInput = input
+  }
+
+  // Reset value so picking the same file twice still fires `change`.
+  sharedFileInput.value = ''
+  sharedFileInput.accept = accept
+  sharedFileInput.multiple = multiple
+
+  return sharedFileInput
+}
+
+async function webSelectPaths(options?: HermesSelectPathsOptions): Promise<string[]> {
+  if (options?.directories) {
+    logOnce('selectPaths.directories')
+
+    return Promise.reject(new WebBridgeCapabilityError('selectPaths.directories'))
+  }
+
+  const accept = (options?.filters || [])
+    .flatMap(filter => filter.extensions.map(extension => `.${extension.replace(/^\./, '')}`))
+    .join(',')
+
+  const input = sharedPickerInput(accept, options?.multiple ?? true)
+
+  const paths = await new Promise<File[]>(resolve => {
+    pendingPick?.()
+
+    pendingPick = () => {
+      pendingPick = null
+      resolve([...input.files ?? []])
+    }
+
+    input.click()
+  })
+
+  return paths.map(file => registerWebFile(file))
+}
+
+async function webSaveImageBuffer(
+  data: ArrayBuffer | Uint8Array,
+  ext: string,
+  name?: string
+): Promise<string> {
+  const normalizedExt = ext.startsWith('.') ? ext : `.${ext}`
+  // slice()/ctor land on Uint8Array<ArrayBuffer>, the only BlobPart-compatible
+  // view under TS 5.7's ArrayBufferLike split.
+  const bytes = data instanceof Uint8Array ? data.slice() : new Uint8Array(data)
+
+  return registerWebBlob(new Blob([bytes]), name || `attachment${normalizedExt}`)
+}
+
+async function webReadClipboard(): Promise<string> {
+  if (!navigator.clipboard) {
+    logOnce('readClipboard')
+
+    return Promise.reject(new WebBridgeCapabilityError('readClipboard'))
+  }
+
+  return navigator.clipboard.readText()
+}
+
+async function webWriteClipboard(text: string): Promise<boolean> {
+  if (!navigator.clipboard) {
+    logOnce('writeClipboard')
+
+    return Promise.reject(new WebBridgeCapabilityError('writeClipboard'))
+  }
+
+  await navigator.clipboard.writeText(text)
+
+  return true
+}
+
+async function webOpenExternal(url: string): Promise<void> {
+  if (!/^https?:\/\//i.test(url)) {
+    logOnce('openExternal')
+
+    return Promise.reject(new WebBridgeCapabilityError(`openExternal(${url})`))
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+async function webNotify(payload: {
+  body?: string
+  silent?: boolean
+  title?: string
+}): Promise<boolean> {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {return false}
+  new Notification(payload.title || 'Hermes', { body: payload.body, silent: payload.silent })
+
+  return true
+}
+
+export function createWebBridge(): Window['hermesDesktop'] {
+  const bridge = {
+    // ── Real implementations (P0 data plane) ──
+    api: webApi,
+    getConnection: webGetConnection,
+    getGatewayWsUrl: webGetGatewayWsUrl,
+    revalidateConnection: async () => ({ ok: true, rebuilt: false }),
+    touchBackend: async () => ({ ok: true }),
+    readFileDataUrl: webReadFileDataUrl,
+    readClipboard: webReadClipboard,
+    writeClipboard: webWriteClipboard,
+    openExternal: webOpenExternal,
+    notify: webNotify,
+    // No peer windows exist in a browser tab — every ambient cue is ours.
+    claimAmbientCue: async () => true,
+
+    // ── Honest static capability values ──
+    glassSupported: false,
+    translucencySupported: false,
+    localModelsEnabled: false,
+
+    // screenshot 是 optional 通道（screenshot?: ScreenshotApi），调用方用
+    // `if (!api)` truthiness 守卫检测不可用（composer 挂截图 / 设置页截图项）。
+    // 必须显式置 undefined，否则 Proxy 兜底会返回 truthy 的 unavailable()
+    // 函数——守卫通过后 api.onStatus(...) 直接 "not a function" 崩溃。
+    screenshot: undefined,
+
+    // ── Subscriptions with no web event source: subscribe, never fire ──
+    onBrowserPopoutClosed: neverFires,
+    onPreviewFileChanged: neverFires,
+    onBackendExit: neverFires,
+    onBootProgress: neverFires,
+    onBootstrapEvent: neverFires,
+    onFoundInPage: neverFires,
+    onOpenFindBarRequested: neverFires,
+
+    // ── Window/overlay surfaces: fire-and-forget pushes are no-ops, ──
+    // ── everything returning a Promise degrades structurally.     ──
+    petOverlay: {
+      open: unavailable('petOverlay.open'),
+      close: unavailable('petOverlay.close'),
+      setBounds: () => {},
+      setIgnoreMouse: () => {},
+      setFocusable: () => {},
+      pushState: () => {},
+      control: () => {},
+      onState: neverFires,
+      onControl: neverFires
+    },
+    quickEntry: {
+      getSettings: unavailable('quickEntry.getSettings'),
+      setSettings: unavailable('quickEntry.setSettings'),
+      submit: () => {},
+      dismiss: () => {},
+      pushState: () => {},
+      onState: neverFires,
+      onSubmit: neverFires,
+      onShown: neverFires
+    },
+
+    // ── Structured degradation for every remaining member ──
+    getProfileRoutes: unavailable('getProfileRoutes'),
+    getPoolLimits: unavailable('getPoolLimits'),
+    setPoolLimits: unavailable('setPoolLimits'),
+    openSessionWindow: unavailable('openSessionWindow'),
+    openSessionInTerminal: unavailable('openSessionInTerminal'),
+    openWindow: unavailable('openWindow'),
+    openBrowserWindow: unavailable('openBrowserWindow'),
+    getBootProgress: unavailable('getBootProgress'),
+    getConnectionConfig: unavailable('getConnectionConfig'),
+    saveConnectionConfig: unavailable('saveConnectionConfig'),
+    applyConnectionConfig: unavailable('applyConnectionConfig'),
+    testConnectionConfig: unavailable('testConnectionConfig'),
+    getSecretStorageEncryption: unavailable('getSecretStorageEncryption'),
+    setSecretStorageEncryption: unavailable('setSecretStorageEncryption'),
+    connections: {
+      list: unavailable('connections.list'),
+      save: unavailable('connections.save'),
+      remove: unavailable('connections.remove'),
+      setPrimary: unavailable('connections.setPrimary'),
+      test: unavailable('connections.test')
+    },
+    sshConfigHosts: unavailable('sshConfigHosts'),
+    sshResolveHost: unavailable('sshResolveHost'),
+    probeConnectionConfig: unavailable('probeConnectionConfig'),
+    oauthLoginConnectionConfig: unavailable('oauthLoginConnectionConfig'),
+    oauthLogoutConnectionConfig: unavailable('oauthLogoutConnectionConfig'),
+    cloud: {
+      status: unavailable('cloud.status'),
+      login: unavailable('cloud.login'),
+      logout: unavailable('cloud.logout'),
+      discover: unavailable('cloud.discover'),
+      agentSignIn: unavailable('cloud.agentSignIn')
+    },
+    profile: {
+      get: unavailable('profile.get'),
+      remember: unavailable('profile.remember'),
+      set: unavailable('profile.set'),
+      // Web 没有 Electron 侧“窗口默认 profile”概念：启动期明确返回 null（不绑定默认），
+      // 设置退化为无副作用，订阅返回空解绑函数（与上游 desktop 的自带测试桩同形）。
+      getDefault: async () => null,
+      setDefault: async (route: DesktopProfileRoute) => route,
+      onDefaultChanged: () => () => {}
+    },
+    requestMicrophoneAccess: unavailable('requestMicrophoneAccess'),
+    readFileText: unavailable('readFileText'),
+    selectPaths: webSelectPaths,
+    saveImageFromUrl: webSaveImageFromUrl,
+    saveImageBuffer: webSaveImageBuffer,
+    saveClipboardImage: unavailable('saveClipboardImage'),
+    // Browser Files carry no real path; the registry mints a virtual one.
+    getPathForFile: (file: File) => registerWebFile(file),
+    normalizePreviewTarget: unavailable('normalizePreviewTarget'),
+    watchPreviewFile: unavailable('watchPreviewFile'),
+    stopPreviewFileWatch: unavailable('stopPreviewFileWatch'),
+    fetchLinkTitle: unavailable('fetchLinkTitle'),
+    sanitizeWorkspaceCwd: unavailable('sanitizeWorkspaceCwd'),
+    settings: {
+      getDefaultProjectDir: webGetDefaultProjectDir,
+      pickDefaultProjectDir: unavailable('settings.pickDefaultProjectDir'),
+      setDefaultProjectDir: unavailable('settings.setDefaultProjectDir')
+    },
+    revealLogs: unavailable('revealLogs'),
+    getRecentLogs: unavailable('getRecentLogs'),
+    readDir: unavailable('readDir'),
+    terminal: {
+      attach: unavailable('terminal.attach'),
+      cwd: unavailable('terminal.cwd'),
+      dispose: unavailable('terminal.dispose'),
+      onData: neverFires,
+      onExit: neverFires,
+      resize: unavailable('terminal.resize'),
+      start: unavailable('terminal.start'),
+      write: unavailable('terminal.write')
+    },
+    getBootstrapState: unavailable('getBootstrapState'),
+    continueBootstrapLocal: unavailable('continueBootstrapLocal'),
+    resetBootstrap: unavailable('resetBootstrap'),
+    repairBootstrap: unavailable('repairBootstrap'),
+    cancelBootstrap: unavailable('cancelBootstrap'),
+    getVersion: unavailable('getVersion'),
+    updates: {
+      check: unavailable('updates.check'),
+      apply: unavailable('updates.apply'),
+      getBranch: unavailable('updates.getBranch'),
+      setBranch: unavailable('updates.setBranch'),
+      onProgress: neverFires
+    },
+    uninstall: {
+      summary: unavailable('uninstall.summary'),
+      run: unavailable('uninstall.run')
+    },
+    themes: {
+      fetchMarketplace: unavailable('themes.fetchMarketplace'),
+      searchMarketplace: unavailable('themes.searchMarketplace')
+    },
+    findInPage: unavailable('findInPage'),
+    stopFindInPage: unavailable('stopFindInPage')
+  }
+
+  // 上游会持续给桌面桥新增通道；缺失的通道在 web 模式必须“降级”而不是让启动期崩：
+  // on* 返回空的解绑函数，可选通道（global.d.ts 里 `?:`）必须返回 undefined——消费方
+  // 用 `?.()` / `if (!x)` 守卫，缺失就该短路；只有必需通道才返回 unavailable() 的
+  // reject 桩（其消费方直接调用，undefined 会变成 TypeError）。
+  // Proxy 兜底一次，免得每次跟上游 rebase 都要逐个补桩（造型断言只解决类型兼容）；
+  // 可选清单由 scripts/gen-web-optional-channels.cjs 从 global.d.ts 生成。
+  return new Proxy(bridge, {
+    get(target, prop, receiver) {
+      if (Reflect.has(target, prop)) return Reflect.get(target, prop, receiver)
+      if (typeof prop !== 'string') return undefined
+      if (/^on[A-Z]/.test(prop)) return neverFires()
+      if (WEB_OPTIONAL_CHANNELS.has(prop)) return undefined
+      return unavailable(prop)
+    }
+  }) as unknown as Window['hermesDesktop']
+}
