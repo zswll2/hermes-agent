@@ -59,6 +59,7 @@ import {
   $sidebarStatusFilter,
   $sidebarWorkspaceOrderIds,
   $sidebarWorkspaceParentOrderIds,
+  closeNarrowSidebarDrawer,
   filterVisibleProjects,
   pinSession,
   SESSION_SEARCH_FOCUS_EVENT,
@@ -397,7 +398,7 @@ export function ChatSidebar({
   onLoadMoreSessions,
   onRetrySessions,
   onLoadMoreMessaging,
-  onResumeSession,
+  onResumeSession: onResumeSessionProp,
   onDeleteSession,
   onArchiveSession,
   onBranchSession,
@@ -409,6 +410,20 @@ export function ChatSidebar({
   const { t } = useI18n()
   const s = t.sidebar
   const { pathname } = useLocation()
+
+  // Selecting a session is the narrow drawer's exit on a phone: the user picked a
+  // conversation to SEE it, so the left drawer folds. Wrapped ONCE here — every
+  // row path in this component (flat list, virtualized list, project lanes,
+  // gateway groups, runs) receives this handler, so the drawer folds whichever
+  // list the row came from. Narrow-gated inside the store, so a desktop user's
+  // docked sidebar is never touched.
+  const onResumeSession = useCallback(
+    (sessionId: string, session?: SessionInfo) => {
+      onResumeSessionProp(sessionId, session)
+      closeNarrowSidebarDrawer()
+    },
+    [onResumeSessionProp]
+  )
   // Contributed nav rows (plugins pairing a page with a sidebar entry) render
   // below the built-ins with the same chrome; active = at their route.
   const navContributions = useContributions(SIDEBAR_NAV_AREA)
