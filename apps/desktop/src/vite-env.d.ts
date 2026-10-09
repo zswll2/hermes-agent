@@ -4,6 +4,11 @@
 // vite.config.ts; a bare identifier would throw in the Electron bundle).
 declare const __HERMES_WEB__: boolean
 
+// This build's web stamp id (public/build-stamp.json `buildId`, written by
+// scripts/write-web-stamp.mjs before vite runs); empty when the stamp file was
+// absent, which disables the web update check.
+declare const __HERMES_BUILD_STAMP__: string
+
 // @novnc/novnc ships no typings (its export is core/rfb.js); the surface the Bot Screen pane uses.
 // Declared here because `apps/desktop/src/**/*.d.ts` is gitignored except for the allowlisted files,
 // and an ambient `declare module` only works in a script-scoped (import-free) declaration file.

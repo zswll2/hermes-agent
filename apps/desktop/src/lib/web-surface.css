@@ -35,3 +35,25 @@
 [data-titlebar-cluster] {
   top: calc(var(--hs-top) + 5px);
 }
+
+@media (pointer: coarse) {
+  /* iOS「点输入框整页放大」的真因：聚焦的输入控件字号 < 16px 时，iOS 会把整页放大。
+     把输入控件的字号抬到 ≥16px 就根治了（页面上看仍是 16px 字号，不再触发缩放）。 */
+  input,
+  textarea,
+  select,
+  [contenteditable='true'],
+  [contenteditable=''] {
+    font-size: max(16px, 1em);
+  }
+
+  /* 去掉双击缩放（保留滚动 / 拖动 / 长按）。 */
+  a,
+  button,
+  [role='button'],
+  [role='tab'],
+  summary,
+  label {
+    touch-action: manipulation;
+  }
+}
