@@ -12,6 +12,12 @@ if (__HERMES_WEB__ && typeof window !== 'undefined' && !window.hermesDesktop) {
 // gated 部署下，未登录直接交给 /login（否则渲染层会落到桌面专属的 "Hermes couldn't start"）。
 installWebAuthGuard()
 
+// iOS 安全区让位（顶部工具簇 / 输入区）。仅浏览器构建，Electron 下 env() 恒 0，
+// 且这里是动态 import → 打包时该 CSS 不会进入桌面产物。
+if (__HERMES_WEB__) {
+  void import('../web-surface.css')
+}
+
 // SPIKE ONLY（点验用，不随正式版发布）：只对 /app-next 预览生效，让上游「简单模式」
 // 默认为开 = 会话侧边栏 + 对话 + 输入框；生产 /app 与桌面端不受影响。
 // 上游 simple 的持久化键见 src/store/interface-mode.ts。

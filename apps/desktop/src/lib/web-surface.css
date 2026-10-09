@@ -1,0 +1,32 @@
+/*
+ * 浏览器构建专用 — iOS 安全区让位。
+ *
+ * 上游是 Electron 应用：窗口没有刘海、没有 Home 指示条，所以整棵渲染层对
+ * env(safe-area-inset-*) 零处理（源码里 `safe-area-inset` 出现 0 次）。在浏览器里、
+ * 尤其是「添加到主屏幕」后的 standalone 模式：
+ *   · 顶部工具簇顶进状态栏/灵动岛（实测 y=5~29，屏幕顶就是状态栏）；
+ *   · 输入框停靠区贴死屏幕底边（实测 bottom=844 = 视口底，正压 Home 指示条）。
+ *
+ * 做法（两个钩子都在上游真实 DOM 里实测过，不是猜的）：
+ *   · [data-slot='sidebar-wrapper'] 是整壳（flex + h-screen）→ 整体内衬安全区，
+ *     内容区连同内部 absolute 层（[data-slot='composer-dock'] bottom:0 等）一起让位；
+ *   · [data-titlebar-cluster] 是 position:fixed、z-70、基线 top:5px → 脱离文档流，
+ *     不跟着壳走，必须单独推。
+ *
+ * 桌面/Electron 下 env() 恒 0 → 整段是空操作（同一份 index.html 两个构建共用）。
+ * headless 验收时不能靠 env()，用 --hermes-safe-top/--hermes-safe-bottom 注入代数值，
+ * 见 .omo/ios-surface-probe.cjs。
+ */
+:root {
+  --hs-top: var(--hermes-safe-top, env(safe-area-inset-top, 0px));
+  --hs-bottom: var(--hermes-safe-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+[data-slot='sidebar-wrapper'] {
+  padding-top: var(--hs-top);
+  padding-bottom: var(--hs-bottom);
+}
+
+[data-titlebar-cluster] {
+  top: calc(var(--hs-top) + 5px);
+}
