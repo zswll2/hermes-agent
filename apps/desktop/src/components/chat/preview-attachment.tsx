@@ -3,15 +3,19 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
 import { useI18n } from '@/i18n'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { Download, MonitorPlay } from '@/lib/icons'
 import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { downloadGatewayFileInBrowser, downloadGatewayMediaFile } from '@/lib/media'
 import { previewName } from '@/lib/preview-targets'
+import { shareGatewayFileNatively } from '@/lib/web-share-file'
 import { notifyError } from '@/store/notifications'
 import { $previewTabSources, closePreviewForSource, openPreview } from '@/store/preview'
 
 export function PreviewAttachment({ target }: { target: string }) {
   const { t } = useI18n()
+  // 手机（粗指针）：文件类的"打开"改成系统「打开方式」面板，不给就地预览。
+  const coarsePointer = useMediaQuery('(pointer: coarse)')
   // This link lives in one session's transcript; resolve it against THAT
   // session's cwd, not the primary chat's.
   const cwd = useStore(useSessionView().$cwd)
@@ -53,6 +57,12 @@ export function PreviewAttachment({ target }: { target: string }) {
     if (isActive) {
       closePreviewForSource(target)
 
+      return
+    }
+
+    // 手机：交给系统「打开方式」面板（iOS 分享面板 = 用其他应用打开 / 存储到文件）。
+    // 不支持或取文件失败才回退到原有的就地预览；用户主动取消不回退（面板已交付）。
+    if (coarsePointer && (await shareGatewayFileNatively(target))) {
       return
     }
 

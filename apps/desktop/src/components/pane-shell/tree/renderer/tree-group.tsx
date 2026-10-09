@@ -29,6 +29,7 @@ import {
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
+import { isCoarsePointer } from '@/lib/coarse-pointer'
 import { useKeybindHint } from '@/lib/keybinds/use-keybind-hint'
 import { cn } from '@/lib/utils'
 import { closeAllOpenSessionTiles, setZoneParkedTiles } from '@/store/session-states'
@@ -688,6 +689,15 @@ export function TreeGroup({
                         // session drop language — link/stack/split); `false` defers
                         // to the generic pane move (the workspace tab on a fresh
                         // draft has no session to link).
+                        //
+                        // 手机（粗指针）不给 tab 任何拖拽（用户裁定）：按下即切换/打开，
+                        // 手指滑动交给滚动，别把标签拖走。桌面/触控板原样。
+                        if (isCoarsePointer()) {
+                          onTap()
+
+                          return
+                        }
+
                         if (!chrome.tabDrag?.(e, onTap)) {
                           startPaneDrag(
                             paneId,
