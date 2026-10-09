@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { searchSessions, type SessionInfo, type SessionSearchResult } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { comboTokens } from '@/lib/keybinds/combo'
@@ -605,6 +606,10 @@ export function ChatSidebar({
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
+
+  // 手机（粗指针）不提供会话拖拽排序：手指在列表上滑动只应滚动，不该把行拖走。
+  // dnd-kit 拿到空传感器数组就完全不激活拖拽；桌面（精细指针）原样保留。
+  const sortableSensors = useMediaQuery('(pointer: coarse)') ? [] : dndSensors
 
   // Profile scope = the "workspace switcher" context. Concrete scope shows only
   // that profile's sessions (clean rows, no per-row tags); ALL fans every
@@ -1802,7 +1807,7 @@ export function ChatSidebar({
                 // geometry at the section boundary.
                 card={cardRows}
                 contentClassName="flex flex-col gap-px rounded-lg pb-2 pt-1"
-                dndSensors={dndSensors}
+                dndSensors={sortableSensors}
                 emptyState={<SidebarPinnedEmptyState />}
                 label={s.pinned}
                 onArchiveSession={onArchiveSession}
@@ -1846,7 +1851,7 @@ export function ChatSidebar({
                   // virtualized long list, which must keep its own scroller.
                   !recentsVirtualizes && COMPACT_FLAT
                 )}
-                dndSensors={dndSensors}
+                dndSensors={sortableSensors}
                 emptyState={
                   inProject && projectLoadFailed ? null : showSessionSkeletons || (inProject && projectLoading) ? (
                     <SidebarSessionSkeletons />

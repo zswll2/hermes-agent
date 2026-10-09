@@ -36,6 +36,25 @@
   top: calc(var(--hs-top) + 5px);
 }
 
+/* 手机版（主屏图标）下的界面裁剪：不改上游组件，只在浏览器表层隐藏/位移。
+   桌面与 Electron 不受影响（下面这些在 pointer: coarse 之外不生效）。 */
+@media (pointer: coarse) {
+  /* 不需要「布局编辑器」按钮（它是桌面排版工具，手机上只占位置）。 */
+  [data-titlebar-cluster] button:has(.codicon-layout) {
+    display: none;
+  }
+
+  /* 不需要终端选项卡（窄屏覆盖层里分区 tab 条上的终端页）。 */
+  [data-narrow-overlay-tab='terminal'] {
+    display: none;
+  }
+}
+
+/* 抽屉下移一点：让它别贴着状态栏，留出呼吸（抽屉是 absolute inset-y-0）。 */
+[data-narrow-overlay] {
+  margin-top: 12px;
+}
+
 @media (pointer: coarse) {
   /* iOS「点输入框整页放大」的真因：聚焦的输入控件字号 < 16px 时，iOS 会把整页放大。
      把输入控件的字号抬到 ≥16px 就根治了（页面上看仍是 16px 字号，不再触发缩放）。 */
