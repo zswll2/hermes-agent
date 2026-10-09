@@ -24,6 +24,7 @@ import {
   $sidebarListGroupIds,
   $sidebarShowAllSessions,
   $sidebarWorkspaceNodeOpen,
+  closeNarrowSidebarDrawer,
   listGroupNodeId,
   toggleWorkspaceNodeCollapsed
 } from '@/store/layout'
@@ -275,6 +276,19 @@ export function SidebarSessionsSection({
     [sessions, preserveOrder]
   )
 
+  // Resuming a session is the drawer's exit on narrow viewports: the user picked
+  // a conversation to SEE it, so the left drawer folds (the desktop docked
+  // sidebar is untouched — the closer is narrow-gated). Both list paths
+  // (renderRow and the virtual list) flow through onResumeSession, so the
+  // wrapper is applied here.
+  const resumeSession = useCallback(
+    (sessionId: string, session?: SessionInfo) => {
+      onResumeSession(sessionId, session)
+      closeNarrowSidebarDrawer()
+    },
+    [onResumeSession]
+  )
+
   const renderRow = useCallback(
     (session: SessionInfo, draggable: boolean, branchStem?: string) => {
       const rowProps = {
@@ -287,7 +301,7 @@ export function SidebarSessionsSection({
         onDelete: () => onDeleteSession(session.id),
         onPin: () => onTogglePin(sessionPinId(session)),
         onToggleUnread: () => onToggleUnread(session.id),
-        onResume: () => onResumeSession(session.id, session),
+        onResume: () => resumeSession(session.id, session),
         reorderable: draggable && !branchStem,
         session,
         showProfile: showProfileTags,

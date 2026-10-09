@@ -559,6 +559,16 @@ function revealNarrowPane(id: string, mode: 'close' | 'open' | 'toggle'): boolea
 // An edge belongs to the pane that sits on it: the flip (⌘\ / a mirrored
 // layout) puts the sessions sidebar on the right, and ⌘B keeps meaning the
 // sidebar, ⌘J the file tree — never "whatever is on the left".
+//
+// Dismiss the left drawer's narrow reveal after an explicit selection (a
+// session / bot / group row): the user picked a conversation to SEE it, so the
+// drawer folds. Narrow-only by construction — revealNarrowPane no-ops above the
+// collapse breakpoint, so the docked sidebar a desktop user keeps open is never
+// touched.
+export function closeNarrowSidebarDrawer() {
+  revealNarrowPane(CHAT_SIDEBAR_PANE_ID, 'close')
+}
+
 export const sidebarSide = (): TreeSide => ($panesFlipped.get() ? 'right' : 'left')
 export const fileBrowserSide = (): TreeSide => ($panesFlipped.get() ? 'left' : 'right')
 

@@ -124,7 +124,21 @@ export function NarrowOverlays() {
         }
 
         if (mode === 'close') {
-          return current?.id === match.id ? null : current
+          // SIDE-scoped, not tab-scoped: the sessions zone's drawer may be
+          // showing ANY of its stacked panes (a SESSIONS | BOTS strip), and a
+          // row selection closes "the left drawer" without knowing which tab
+          // fronts it. A close aimed at the other side still no-ops.
+          if (!current) {
+            return current
+          }
+
+          if (current.id === match.id) {
+            return null
+          }
+
+          const currentPane = collapsiblesRef.current.find(p => p.id === current.id)
+
+          return currentPane && sideOf(currentPane) === sideOf(match) ? null : current
         }
 
         return current?.id === match.id && current.pinned ? null : { id: match.id, pinned: true }
