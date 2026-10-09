@@ -3,10 +3,14 @@
 // `__HERMES_WEB__` define is `'false'`, so this branch is dead-code-eliminated
 // and web-bridge.ts never enters the bundle.
 import { createWebBridge } from './web-bridge'
+import { installWebAuthGuard } from './auth-guard'
 
 if (__HERMES_WEB__ && typeof window !== 'undefined' && !window.hermesDesktop) {
   window.hermesDesktop = createWebBridge()
 }
+
+// gated 部署下，未登录直接交给 /login（否则渲染层会落到桌面专属的 "Hermes couldn't start"）。
+installWebAuthGuard()
 
 // SPIKE ONLY（点验用，不随正式版发布）：只对 /app-next 预览生效，让上游「简单模式」
 // 默认为开 = 会话侧边栏 + 对话 + 输入框；生产 /app 与桌面端不受影响。
