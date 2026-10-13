@@ -231,3 +231,53 @@ describe('session drop targeting onto a sidebar project row', () => {
     expect(moveSessionToProject).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * 手机（粗指针）不拖会话 —— 2026-10-09 用户裁定。
+ *
+ * 为什么单独立这一条：一次按下会同时驱动两套拖拽（见 session-row 的 onPointerDown
+ * 注释），本文件覆盖的是 `startSessionDrag` 这一套（会话拖放语言）。它曾经被漏掉，
+ * 因为"手机不拖拽"当初只堵了 dnd-kit 的列表内排序（sensors 置空）—— 真机上会话
+ * 照样能被拖起来。
+ */
+describe('手机（粗指针）不拖会话', () => {
+  const realMatchMedia = window.matchMedia
+
+  /** jsdom 不实现 matchMedia；这里按查询串回答，既能开也能关粗指针。 */
+  const withCoarsePointer = (coarse: boolean) => {
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: coarse && /pointer:\s*coarse/.test(query),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false
+      })) as unknown as typeof window.matchMedia
+  }
+
+  afterEach(() => {
+    window.matchMedia = realMatchMedia
+  })
+
+  it('精细指针：拖到面板上照常提交（对照组，证明测得出差别）', () => {
+    withCoarsePointer(false)
+
+    dragTo(mountStackedTabs(), 500, 740)
+
+    expect(requestComposerInsertRefs).toHaveBeenCalled()
+  })
+
+  it('粗指针：同一个手势不启动拖拽、不提交任何目标', () => {
+    withCoarsePointer(true)
+
+    dragTo(mountStackedTabs(), 500, 740)
+
+    expect(requestComposerInsertRefs).not.toHaveBeenCalled()
+    // 拖拽真的没起来：引擎 engage 会改 body 的光标/选择态
+    expect(document.body.style.cursor).not.toBe('grabbing')
+    expect(document.body.style.userSelect).not.toBe('none')
+  })
+})

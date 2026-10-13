@@ -47,6 +47,7 @@ import {
   SESSION_TILE_DRAG
 } from '@/components/pane-shell/tree/store'
 import type { EngineZone, ZoneRect } from '@/components/pane-shell/tree/zones-engine'
+import { isCoarsePointer } from '@/lib/coarse-pointer'
 import { translateNow } from '@/i18n'
 import { notifyError } from '@/store/notifications'
 import { requestFreshSession } from '@/store/profile'
@@ -124,6 +125,16 @@ export function startSessionDrag(
   e: ReactPointerEvent<HTMLElement>,
   opts?: { onTap?: () => void }
 ) {
+  // 手机（粗指针）不给会话拖拽（用户 2026-10-09 裁定）。一次按下其实会同时驱动两套
+  // 拖拽（见 session-row 的 onPointerDown 注释）：本函数（会话拖放语言：拖到面板/标签上
+  // 开新面板、堆叠、分屏）与 dnd-kit 的列表内排序。手机上手指滑动只应该滚动列表。
+  // 点击语义不受影响：行的点击走自己的 onClick，标签的点击靠 onTap。
+  if (isCoarsePointer()) {
+    opts?.onTap?.()
+
+    return
+  }
+
   let zones: EngineZone[] = []
   let strips: StripSnapshot[] = []
   let surfaces: SurfaceSnapshot[] = []

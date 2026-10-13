@@ -31,6 +31,7 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 
 import { createDragGhost, type DragGhost } from '@/lib/drag-ghost'
+import { isCoarsePointer } from '@/lib/coarse-pointer'
 import { ESCAPE_PRIORITY, pushEscapeLayer } from '@/lib/escape-layers'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { reorderCommitHaptic, reorderStepHaptic } from '@/lib/reorder'
@@ -429,6 +430,15 @@ export function startPaneDrag(
   selection?: readonly string[]
 ) {
   if (e.button !== 0) {
+    return
+  }
+
+  // 手机（粗指针）不给面板/标签拖拽（用户 2026-10-09 裁定）：标签按下即切换、滑动交给
+  // 滚动。放在最前 —— 下面的 preventDefault/stopPropagation 与 markSource 的"变暗"
+  // 都是拖拽已经成立之后的事，早退不留痕。
+  if (isCoarsePointer()) {
+    onTap?.()
+
     return
   }
 
